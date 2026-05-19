@@ -1,0 +1,240 @@
+:root {
+  --base03: #002b36;
+  --base02: #073642;
+  --base01: #586e75;
+  --base00: #657b83;
+  --base0: #839496;
+  --base1: #93a1a1;
+  --base2: #eee8d5;
+  --base3: #fdf6e3;
+  --yellow: #b58900;
+  --orange: #cb4b16;
+  --red: #dc322f;
+  --magenta: #d33682;
+  --violet: #6c71c4;
+  --blue: #268bd2;
+  --cyan: #2aa198;
+  --green: #859900;
+  --mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 11px/1.25 var(--mono);
+  background: var(--base3);
+  color: var(--base00);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--base2);
+  background: var(--base2);
+  flex-shrink: 0;
+}
+
+#ws-filter {
+  font: inherit;
+  font-size: 10px;
+  max-width: 120px;
+  padding: 0 2px;
+  border: 1px solid var(--base1);
+  background: var(--base3);
+  color: var(--base01);
+}
+
+#status {
+  flex: 1;
+  font-size: 10px;
+  color: var(--base01);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#status.loading::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border: 1px solid var(--base1);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: spin 0.6s linear infinite;
+}
+
+#refresh {
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  padding: 1px 5px;
+  background: var(--base3);
+  color: var(--base01);
+  border: 1px solid var(--base1);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+#refresh:hover:not(:disabled) {
+  background: var(--base2);
+  color: var(--base03);
+}
+
+#refresh:disabled { opacity: 0.45; cursor: default; }
+
+#layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+aside {
+  width: 168px;
+  border-right: 1px solid var(--base2);
+  overflow-y: auto;
+  flex-shrink: 0;
+  background: var(--base2);
+}
+
+main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 6px;
+  background: var(--base3);
+}
+
+.hint, .loading {
+  color: var(--base1);
+  padding: 4px 6px;
+  font-size: 10px;
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 5px;
+  border-bottom: 1px solid rgba(0, 43, 54, 0.06);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  min-height: 0;
+}
+
+.item:hover { background: var(--base3); }
+.item.active {
+  background: var(--base3);
+  box-shadow: inset 2px 0 0 var(--blue);
+}
+
+.item .mode {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--cyan);
+  width: 14px;
+}
+
+.item .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--base02);
+}
+
+.ws-hdr {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--base01);
+  padding: 4px 5px 2px;
+  background: rgba(0, 43, 54, 0.04);
+  border-bottom: 1px solid rgba(0, 43, 54, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ws-hdr .ws-path {
+  font-weight: 400;
+  text-transform: none;
+  color: var(--base1);
+}
+
+.chat-hdr .chat-ws {
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+.chat-hdr .msg-count {
+  color: var(--base1);
+  font-weight: 400;
+  font-size: 9px;
+}
+
+.chat-hdr {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--base01);
+  padding: 2px 0 4px;
+  border-bottom: 1px solid var(--base2);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg {
+  display: flex;
+  gap: 5px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(0, 43, 54, 0.05);
+  max-width: none;
+}
+
+.msg .tag {
+  flex-shrink: 0;
+  width: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.msg.user .tag { color: var(--blue); }
+.msg.assistant .tag { color: var(--green); }
+.msg.assistant.tool .tag { color: var(--violet); }
+.msg.assistant.tool pre { color: var(--base01); font-size: 10px; }
+
+.msg pre {
+  flex: 1;
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  overflow-wrap: normal;
+  word-break: normal;
+  tab-size: 2;
+  color: var(--base00);
+}
+
+.err {
+  color: var(--red);
+  padding: 4px 6px;
+  font-size: 10px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

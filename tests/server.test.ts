@@ -1,0 +1,52 @@
+import request from 'supertest';
+import { CursorDbReader } from '../src/db/reader';
+import { createApp } from '../src/server';
+import { ChatStore } from '../src/chat-store';
+import { createTestDb, removeTestDb, COMPOSER_ID } from './fixture';
+
+describe('HTTP API', () => {
+  let dbPath: string;
+  let reader: CursorDbReader;
+  let store: ChatStore;
+
+  beforeEach(async () => {
+    dbPath = createTestDb();
+    reader = CursorDbReader.fromPath(dbPath);
+    store = new ChatStore(reader, dbPath, true);
+    await store.refresh();
+  });
+
+  afterEach(() => {
+    reader.close();
+    removeTestDb(dbPath);
+  });
+
+  it('GET /api/status', async () => {
+    const app = createApp(store);
+    const res = await request(app).get('/api/status');
+    expect(res.status).toBe(200);
+    expect(res.body.ready).toBe(true);
+    expect(res.body.count).toBeGreaterThan(0);
+  });
+
+  it('GET /api/chats', async () => {
+    const app = createApp(store);
+    const res = await request(app).get('/api/chats');
+    expect(res.status).toBe(200);
+    expect(res.body.chats.some((c: { composerId: string }) => c.composerId === COMPOSER_ID)).toBe(true);
+  });
+
+  it('GET /api/chats/:id', async () => {
+    const app = createApp(store);
+    const res = await request(app).get(`/api/chats/${COMPOSER_ID}`);
+    expect(res.status).toBe(200);
+    expect(res.body.messages).toHaveLength(2);
+    expect(res.body.messages[0].text).toBe('Hello');
+  });
+
+  it('GET /api/chats/:id 404', async () => {
+    const app = createApp(store);
+    const res = await request(app).get('/api/chats/00000000-0000-0000-0000-000000000000');
+    expect(res.status).toBe(404);
+  });
+});

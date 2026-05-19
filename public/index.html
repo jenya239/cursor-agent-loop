@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>cr</title>
+  <style>
+    body { margin: 0; background: #fdf6e3; color: #657b83; font: 11px/1.25 ui-monospace, monospace; }
+  </style>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header id="bar">
+    <select id="ws-filter" title="workspace"><option value="">все</option></select>
+    <span id="status">…</span>
+    <button type="button" id="refresh" disabled title="Обновить">↻</button>
+  </header>
+  <div id="layout">
+    <aside id="list"><p class="loading">…</p></aside>
+    <main id="chat"><p class="hint">—</p></main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
