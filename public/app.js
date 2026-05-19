@@ -155,13 +155,19 @@ function chatAtBottom(threshold = 80) {
 
 function scrollChatBottom() {
   const go = () => {
-    chatEl.scrollTop = chatEl.scrollHeight;
+    const end = document.getElementById('chat-end');
+    if (end) {
+      end.scrollIntoView({ block: 'end' });
+    } else {
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
   };
   go();
   requestAnimationFrame(() => {
     go();
     requestAnimationFrame(go);
   });
+  setTimeout(go, 50);
 }
 
 function renderChat(data, pinBottom) {
@@ -181,14 +187,13 @@ function renderChat(data, pinBottom) {
         `<article class="msg ${m.role}${(m.text || '').startsWith('[') ? ' tool' : ''}"><span class="tag">${tag(m)}</span><pre>${esc(m.text || '')}</pre></article>`
     )
     .join('');
-  chatEl.innerHTML = `<div class="chat-hdr">${ws}${title} <span class="msg-count">${(data.messages || []).length}</span></div>${body || '<p class="hint">пусто</p>'}`;
+  chatEl.innerHTML = `<div class="chat-hdr">${ws}${title} <span class="msg-count">${(data.messages || []).length}</span></div>${body || '<p class="hint">пусто</p>'}<div id="chat-end" aria-hidden="true"></div>`;
 
   if (pinBottom) scrollChatBottom();
 }
 
 async function loadChat(id, opts = {}) {
-  const { silent = false, force = false } = opts;
-  const pinBottom = !silent || chatAtBottom();
+  const { silent = false, force = false, pinBottom: pin } = opts;
   if (!silent) chatEl.innerHTML = '<p class="loading">Загрузка…</p>';
 
   const res = await fetch(`/api/chats/${encodeURIComponent(id)}?fresh=1`);
@@ -198,6 +203,7 @@ async function loadChat(id, opts = {}) {
   const sig = chatSignature(data);
   if (!force && sig === lastChatSig) return data;
   lastChatSig = sig;
+  const pinBottom = pin ?? (!silent || chatAtBottom());
   renderChat(data, pinBottom);
   return data;
 }
@@ -222,7 +228,7 @@ async function openChat(id) {
   lastChatSig = '';
 
   try {
-    await loadChat(id, { force: true });
+    await loadChat(id, { force: true, pinBottom: true });
     await loadList();
     startChatPoll(id);
   } catch (e) {

@@ -20,12 +20,16 @@
 
 * { box-sizing: border-box; }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   font: 11px/1.25 var(--mono);
   background: var(--base3);
   color: var(--base00);
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
@@ -100,6 +104,7 @@ body {
 
 aside {
   width: 168px;
+  min-height: 0;
   border-right: 1px solid var(--base2);
   overflow-y: auto;
   flex-shrink: 0;
@@ -108,7 +113,9 @@ aside {
 
 main {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 4px 6px;
   background: var(--base3);
 }
@@ -183,6 +190,11 @@ main {
   color: var(--base1);
   font-weight: 400;
   font-size: 9px;
+}
+
+#chat-end {
+  height: 0;
+  overflow: hidden;
 }
 
 .chat-hdr {
