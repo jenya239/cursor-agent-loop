@@ -5,9 +5,12 @@
   "scripts": {
     "build": "tsc",
     "build:ui": "esbuild src/ui/app.ts --bundle --outfile=public/bundle.js --format=iife --platform=browser",
+    "predev": "npm run build:ui",
+    "dev:ui": "esbuild src/ui/app.ts --bundle --outfile=public/bundle.js --format=iife --platform=browser --watch",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
     "test": "jest",
+    "test:e2e": "playwright test",
     "fixture:record": "tsx scripts/fixture-record.ts"
   },
   "dependencies": {
@@ -23,6 +26,7 @@
     "esbuild": "^0.25.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
+    "@playwright/test": "^1.51.0",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.6",
     "tsx": "^4.19.3",

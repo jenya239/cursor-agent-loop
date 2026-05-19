@@ -30,5 +30,6 @@
     "cdpOk": true,
     "cdpReason": "stop-icon",
     "at": 2
-  }
+  },
+  "switch": null
 }

@@ -22,6 +22,7 @@ Cursor с remote debugging. UI — во **внешнем** браузере.
 | `CDP_URL` | — | Полный URL CDP |
 | `CDP_WINDOW_TITLE` | — | Подстрока заголовка окна |
 | `MSG_CACHE_TTL_MS` | `800` | TTL кэша сообщений |
+| `CR_SEND_STRICT` | `1` | `0` — send без 409 при failed switch (UI confirm) |
 
 ## API
 
@@ -40,10 +41,13 @@ npm run fixture:record
 npm run fixture:record -- --apply
 ```
 
+Два прогона `--apply`: агент idle, затем busy (агент работает) — для точных `composer-busy.json`.
+
 ## Тесты
 
 ```bash
 npm test
+npm run test:e2e
 ```
 
 Фронт: `src/ui/` (Store, CrApi, PollScheduler), сборка `public/bundle.js`. CDP: `FixtureCdp` / `CursorMock`.

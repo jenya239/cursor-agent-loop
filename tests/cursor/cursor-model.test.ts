@@ -27,6 +27,7 @@ describe('CursorModel', () => {
     expect(s.agent.busy).toBe(true);
     expect(s.cdp.ok).toBe(true);
     expect(s.chats.length).toBeGreaterThan(0);
+    expect(s.switch?.ok).toBe(true);
   });
 
   it('chat returns null for unknown id', async () => {

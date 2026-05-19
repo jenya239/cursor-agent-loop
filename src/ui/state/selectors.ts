@@ -11,8 +11,13 @@ export function filterChats(chats: ChatSummary[], wsFilter: string): ChatSummary
 
 export function isComposerMismatch(state: UiState): boolean {
   if (!state.activeComposerId || !state.snapshot?.cdp.ok) return false;
-  const win = state.agent?.cdpWindowTitle || state.cdpWindowTitle;
-  if (!win) return false;
+  const sw = state.snapshot.switch;
+  if (sw && !sw.ok) return true;
+  const chatName = (state.chatMeta?.name || '').trim();
+  const win = (state.agent?.cdpWindowTitle || '').trim();
+  if (chatName && win && !win.includes(chatName) && chatName.length > 3) {
+    return true;
+  }
   return false;
 }
 
@@ -23,7 +28,23 @@ export interface AgentPanelModel {
   dbLine: string;
   windowLine: string;
   cdpMeta: string;
+  cdpDetails: string;
+  switchLine: string;
   mismatch: boolean;
+}
+
+function formatCdpDetails(state: UiState): string {
+  const rows = state.snapshot?.composerByWindow || [];
+  if (!rows.length) return '';
+  return rows
+    .map((w) => {
+      const p = w.probe;
+      const ctrl = (p.controls || [])
+        .map((c) => `${c.role}${c.visible ? '' : '?'}`)
+        .join(',');
+      return `${w.windowTitle}: ${p.busy ? 'busy' : 'idle'}(${p.reason})${ctrl ? `[${ctrl}]` : ''}`;
+    })
+    .join(' | ');
 }
 
 export function agentPanelModel(state: UiState): AgentPanelModel {
@@ -36,6 +57,8 @@ export function agentPanelModel(state: UiState): AgentPanelModel {
       dbLine: '',
       windowLine: '',
       cdpMeta: '',
+      cdpDetails: '',
+      switchLine: '',
       mismatch: false,
     };
   }
@@ -53,6 +76,9 @@ export function agentPanelModel(state: UiState): AgentPanelModel {
   const busyN = state.snapshot?.composerByWindow?.filter((w) => w.probe?.busy).length ?? 0;
   const cdpMeta =
     state.snapshot?.cdp?.ok && n ? ` · CDP ${n} окн${busyN ? `, ${busyN} занято` : ''}` : '';
+  const sw = state.snapshot?.switch;
+  const switchLine = sw ? ` · switch: ${sw.ok ? 'ok' : 'fail'}(${sw.reason})` : '';
+  const cdpDetails = formatCdpDetails(state);
   return {
     phase: st.phase,
     label,
@@ -60,6 +86,8 @@ export function agentPanelModel(state: UiState): AgentPanelModel {
     dbLine,
     windowLine,
     cdpMeta,
+    cdpDetails,
+    switchLine,
     mismatch: isComposerMismatch(state),
   };
 }

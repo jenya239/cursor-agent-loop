@@ -21,4 +21,29 @@ describe('refresh-policy', () => {
       )
     ).toBe('agent:idle');
   });
+
+  it('no refresh when still busy', () => {
+    const snap = {
+      agent: { busy: true, phase: 'busy' as const, dbBusy: false, cdpBusy: true, cdpOk: true, at: 1 },
+    };
+    expect(
+      shouldRefreshChat({
+        prevAgent: { busy: true, phase: 'busy', dbBusy: false, cdpBusy: true, cdpOk: true, at: 0 },
+        snap: snap as never,
+      })
+    ).toBe(false);
+  });
+
+  it('refresh after send', () => {
+    const snap = {
+      agent: { busy: false, phase: 'idle' as const, dbBusy: false, cdpBusy: false, cdpOk: true, at: 1 },
+    };
+    expect(
+      shouldRefreshChat({
+        prevAgent: null,
+        snap: snap as never,
+        afterSend: true,
+      })
+    ).toBe(true);
+  });
 });

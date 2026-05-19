@@ -23,7 +23,7 @@ export class LiveCdp implements CdpPort {
 
   async switchComposer(
     composerId: string,
-    opts?: { windowTitle?: string }
+    opts?: { windowTitle?: string; chatName?: string }
   ): Promise<{ ok: boolean; reason: string }> {
     if (!(await this.isAvailable())) {
       return { ok: false, reason: 'cdp-unavailable' };
@@ -35,6 +35,7 @@ export class LiveCdp implements CdpPort {
     }
     const rows = (await runProbeOnTargets(COMPOSER_SWITCH_PROBE_ID, targets, {
       composerId,
+      chatName: opts?.chatName,
     })) as { ok: boolean; reason: string }[];
     if (rows.some((r) => r.ok)) return { ok: true, reason: 'clicked' };
     return { ok: false, reason: rows[0]?.reason || 'no-element' };

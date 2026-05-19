@@ -13,5 +13,6 @@ describe('composer-switch.v1', () => {
 
   it('buildComposerSwitchJs embeds id', () => {
     expect(buildComposerSwitchJs('abc')).toContain('abc');
+    expect(buildComposerSwitchJs('abc', 'My Chat')).toContain('My Chat');
   });
 });

@@ -6,6 +6,7 @@ import {
   COMPOSER_AGENT_PROBE_JS,
   parseComposerAgentProbeValue,
 } from './composer-agent.v1';
+import { COMPOSER_AGENT_PROBE_JS as COMPOSER_AGENT_PROBE_V2_JS } from './composer-agent.v2';
 import {
   COMPOSER_SWITCH_PROBE_ID,
   buildComposerSwitchJs,
@@ -13,10 +14,24 @@ import {
 } from './composer-switch.v1';
 import type { CdpProbeId } from '../port';
 
+async function evalAgentProbe(
+  send: (method: string, params?: Record<string, unknown>) => Promise<unknown>
+): Promise<ReturnType<typeof parseComposerAgentProbeValue>> {
+  for (const expression of [COMPOSER_AGENT_PROBE_V2_JS, COMPOSER_AGENT_PROBE_JS]) {
+    const r = (await send('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+    })) as { result?: { value?: unknown } };
+    const v = parseComposerAgentProbeValue(r.result?.value);
+    if (v) return v;
+  }
+  return null;
+}
+
 export async function runProbeOnTargets(
   probeId: CdpProbeId,
   targets: CdpTarget[],
-  params?: { composerId?: string }
+  params?: { composerId?: string; chatName?: string }
 ): Promise<ComposerAgentPageProbe[] | { ok: boolean; reason: string }[]> {
   const pages = composerPageOrder(targets);
   if (probeId === COMPOSER_AGENT_PROBE_ID) {
@@ -26,11 +41,7 @@ export async function runProbeOnTargets(
         const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
         try {
           await send('Runtime.enable');
-          const r = (await send('Runtime.evaluate', {
-            expression: COMPOSER_AGENT_PROBE_JS,
-            returnByValue: true,
-          })) as { result?: { value?: unknown } };
-          const v = parseComposerAgentProbeValue(r.result?.value);
+          const v = await evalAgentProbe(send);
           if (v) out.push({ title: page.title, ...v });
         } finally {
           close();
@@ -42,7 +53,7 @@ export async function runProbeOnTargets(
     return out;
   }
   if (probeId === COMPOSER_SWITCH_PROBE_ID) {
-    const js = buildComposerSwitchJs(params?.composerId || '');
+    const js = buildComposerSwitchJs(params?.composerId || '', params?.chatName);
     const out: { ok: boolean; reason: string }[] = [];
     for (const page of pages) {
       try {

@@ -184,6 +184,15 @@ aside {
   color: var(--orange);
 }
 
+.agent-cdp-details {
+  font-size: 10px;
+  opacity: 0.85;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .agent-panel[data-phase='unknown'] {
   background: var(--base3);
   color: var(--base1);

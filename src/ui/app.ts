@@ -12,7 +12,7 @@ import { esc, shortPath } from './views/dom';
 import { renderChatHtml } from './views/render-chat';
 import { renderListHtml } from './views/render-list';
 import { applyAgentPanel } from './views/render-agent-panel';
-import { chatSignature } from './views/chat-sig';
+import { isComposerMismatch } from './state/selectors';
 
 const LS_LAST_CHAT = 'cr.lastComposerId';
 const SEND_COOLDOWN_MS = 8000;
@@ -182,6 +182,12 @@ export function boot(): void {
     if (text === lastSendText && now - lastSendAt < SEND_COOLDOWN_MS) return;
     if (now - lastSendAt < 800) return;
     if (s.agentBusy) return;
+    if (isComposerMismatch(s)) {
+      const ok = window.confirm(
+        'Выбранный чат может не совпадать с активным composer в Cursor. Отправить всё равно?'
+      );
+      if (!ok) return;
+    }
 
     const draft = text;
     store.dispatch({ type: 'SEND_START' });

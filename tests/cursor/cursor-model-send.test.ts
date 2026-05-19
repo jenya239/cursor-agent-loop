@@ -27,10 +27,21 @@ describe('CursorModel.send', () => {
     expect(r.text).toBe('hi');
   });
 
-  it('switch-fail throws', async () => {
+  it('switch-fail throws when strict', async () => {
     const m = new CursorModel(store, CursorMock.port('switch-fail'));
     await expect(m.send('hi', { composerId: '11111111-1111-1111-1111-111111111111' })).rejects.toThrow(
       /switch failed/
     );
+  });
+
+  it('switch-fail allowed when CR_SEND_STRICT=0', async () => {
+    process.env.CR_SEND_STRICT = '0';
+    jest.resetModules();
+    const { CursorModel: M } = await import('../../src/cursor/cursor-model');
+    const m = new M(store, CursorMock.port('switch-fail'));
+    const r = await m.send('hi', { composerId: '11111111-1111-1111-1111-111111111111' });
+    expect(r.text).toBe('hi');
+    delete process.env.CR_SEND_STRICT;
+    jest.resetModules();
   });
 });

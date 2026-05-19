@@ -5,6 +5,10 @@ import {
   listTargets,
   pickWorkbenchWithComposer,
 } from './client';
+import {
+  COMPOSER_AGENT_PROBE_JS,
+  parseComposerAgentProbeValue,
+} from './probes/composer-agent.v1';
 
 const FIND_INPUT_JS = `(() => {
   const bar = document.querySelector('.composer-bar');
@@ -29,9 +33,6 @@ const FIND_INPUT_JS = `(() => {
 const SUBMIT_JS = `(() => {
   const bar = document.querySelector('.composer-bar');
   if (!bar) return { ok: false, reason: 'no-bar' };
-  if (bar.querySelector('.codicon-debug-stop')) {
-    return { ok: false, reason: 'agent-running' };
-  }
   for (const btn of bar.querySelectorAll('.anysphere-icon-button, button, [role="button"]')) {
     if (btn.querySelector('.codicon-arrow-up')) {
       btn.click();
@@ -80,6 +81,15 @@ export async function sendComposerMessage(
   const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
   try {
     await send('Runtime.enable');
+
+    const probe = (await send('Runtime.evaluate', {
+      expression: COMPOSER_AGENT_PROBE_JS,
+      returnByValue: true,
+    })) as { result?: { value?: unknown } };
+    const agent = parseComposerAgentProbeValue(probe.result?.value);
+    if (agent?.busy) {
+      throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
+    }
 
     const found = (await send('Runtime.evaluate', {
       expression: FIND_INPUT_JS,

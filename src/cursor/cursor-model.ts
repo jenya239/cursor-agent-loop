@@ -4,7 +4,16 @@ import type { ChatStore } from '../chat-store';
 import type { CdpPort } from '../cdp/port';
 import { COMPOSER_AGENT_PROBE_ID } from '../cdp/probes/composer-agent.v1';
 import { liveCdp } from '../cdp/live-cdp';
-import type { ChatDetailView, ComposerUiState, CursorSnapshot, CursorWindow } from './types';
+import { isSendStrict } from '../send-strict';
+import type {
+  ChatDetailView,
+  ComposerSwitchResult,
+  ComposerUiState,
+  CursorSnapshot,
+  CursorWindow,
+} from './types';
+
+const SWITCH_CACHE_MS = 4000;
 
 function cdpProbeFrom(port: CdpPort) {
   return async () => {
@@ -20,12 +29,31 @@ function cdpProbeFrom(port: CdpPort) {
 
 export class CursorModel {
   private readonly agent: AgentModel;
+  private switchCache: {
+    composerId: string;
+    at: number;
+    result: ComposerSwitchResult;
+  } | null = null;
 
   constructor(
     private readonly store: ChatStore,
     private readonly cdp: CdpPort = liveCdp
   ) {
     this.agent = new AgentModel(store.reader, cdpProbeFrom(cdp));
+  }
+
+  private async resolveSwitch(composerId: string): Promise<ComposerSwitchResult | null> {
+    if (!(await this.cdp.isAvailable())) return null;
+    const hit = this.switchCache;
+    if (hit && hit.composerId === composerId && Date.now() - hit.at < SWITCH_CACHE_MS) {
+      return hit.result;
+    }
+    const data = this.store.reader.getComposerData(composerId);
+    const result = await this.cdp.switchComposer(composerId, {
+      chatName: data?.name,
+    });
+    this.switchCache = { composerId, at: Date.now(), result };
+    return result;
   }
 
   async snapshot(composerId?: string): Promise<CursorSnapshot> {
@@ -58,6 +86,7 @@ export class CursorModel {
     const agent = composerId
       ? await this.agent.forComposer(composerId)
       : await this.agent.forCdp();
+    const sw = composerId && cdpOk ? await this.resolveSwitch(composerId) : null;
     return {
       at: Date.now(),
       cdp: { ok: cdpOk },
@@ -65,6 +94,7 @@ export class CursorModel {
       composerByWindow,
       chats,
       agent,
+      switch: sw,
     };
   }
 
@@ -89,10 +119,10 @@ export class CursorModel {
     opts?: { composerId?: string; windowTitle?: string }
   ): Promise<{ ok: true; text: string; pageTitle: string }> {
     if (opts?.composerId) {
-      const sw = await this.cdp.switchComposer(opts.composerId, {
-        windowTitle: opts.windowTitle,
-      });
-      if (!sw.ok) throw new Error(`switch failed: ${sw.reason}`);
+      const sw = await this.resolveSwitch(opts.composerId);
+      if (sw && !sw.ok && isSendStrict()) {
+        throw new Error(`switch failed: ${sw.reason}`);
+      }
     }
     const r = await this.cdp.sendMessage(text, { windowTitle: opts?.windowTitle });
     return { ok: true, text: r.text, pageTitle: r.pageTitle };

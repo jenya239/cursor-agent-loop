@@ -15,6 +15,11 @@ export interface ComposerUiState {
   probe: ComposerAgentPageProbe;
 }
 
+export interface ComposerSwitchResult {
+  ok: boolean;
+  reason: string;
+}
+
 export interface CursorSnapshot {
   at: number;
   cdp: { ok: boolean };
@@ -22,6 +27,7 @@ export interface CursorSnapshot {
   composerByWindow: ComposerUiState[];
   chats: ChatSummary[];
   agent: AgentState;
+  switch: ComposerSwitchResult | null;
 }
 
 export interface ChatDetailView {

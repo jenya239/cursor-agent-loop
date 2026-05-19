@@ -47,6 +47,14 @@ export class PollScheduler {
       const snap = await this.api.snapshot(id ?? undefined);
       const ev = prevAgent ? agentTransition(prevAgent, snap.agent) : null;
       this.store.dispatch({ type: 'SNAPSHOT', snap, agentEvent: ev });
+      if (snap.chats.length) {
+        this.store.dispatch({
+          type: 'SET_CHATS',
+          chats: snap.chats,
+          partial: false,
+          loading: false,
+        });
+      }
       if (id && ev) {
         applyAgentPoll(this.prevAgentBusy, id, {
           composerId: id,

@@ -120,6 +120,14 @@
         const snap = await this.api.snapshot(id ?? void 0);
         const ev = prevAgent ? agentTransition(prevAgent, snap.agent) : null;
         this.store.dispatch({ type: "SNAPSHOT", snap, agentEvent: ev });
+        if (snap.chats.length) {
+          this.store.dispatch({
+            type: "SET_CHATS",
+            chats: snap.chats,
+            partial: false,
+            loading: false
+          });
+        }
         if (id && ev) {
           applyAgentPoll(this.prevAgentBusy, id, {
             composerId: id,
@@ -157,9 +165,23 @@
   }
   function isComposerMismatch(state) {
     if (!state.activeComposerId || !state.snapshot?.cdp.ok) return false;
-    const win = state.agent?.cdpWindowTitle || state.cdpWindowTitle;
-    if (!win) return false;
+    const sw = state.snapshot.switch;
+    if (sw && !sw.ok) return true;
+    const chatName = (state.chatMeta?.name || "").trim();
+    const win = (state.agent?.cdpWindowTitle || "").trim();
+    if (chatName && win && !win.includes(chatName) && chatName.length > 3) {
+      return true;
+    }
     return false;
+  }
+  function formatCdpDetails(state) {
+    const rows = state.snapshot?.composerByWindow || [];
+    if (!rows.length) return "";
+    return rows.map((w) => {
+      const p = w.probe;
+      const ctrl = (p.controls || []).map((c) => `${c.role}${c.visible ? "" : "?"}`).join(",");
+      return `${w.windowTitle}: ${p.busy ? "busy" : "idle"}(${p.reason})${ctrl ? `[${ctrl}]` : ""}`;
+    }).join(" | ");
   }
   function agentPanelModel(state) {
     const st = state.agent;
@@ -171,6 +193,8 @@
         dbLine: "",
         windowLine: "",
         cdpMeta: "",
+        cdpDetails: "",
+        switchLine: "",
         mismatch: false
       };
     }
@@ -181,6 +205,9 @@
     const n = state.snapshot?.windows?.length;
     const busyN = state.snapshot?.composerByWindow?.filter((w) => w.probe?.busy).length ?? 0;
     const cdpMeta = state.snapshot?.cdp?.ok && n ? ` \xB7 CDP ${n} \u043E\u043A\u043D${busyN ? `, ${busyN} \u0437\u0430\u043D\u044F\u0442\u043E` : ""}` : "";
+    const sw = state.snapshot?.switch;
+    const switchLine = sw ? ` \xB7 switch: ${sw.ok ? "ok" : "fail"}(${sw.reason})` : "";
+    const cdpDetails = formatCdpDetails(state);
     return {
       phase: st.phase,
       label,
@@ -188,6 +215,8 @@
       dbLine,
       windowLine,
       cdpMeta,
+      cdpDetails,
+      switchLine,
       mismatch: isComposerMismatch(state)
     };
   }
@@ -358,7 +387,9 @@
   // src/ui/views/render-agent-panel.ts
   function renderAgentPanelHtml(m) {
     const mismatch = m.mismatch ? ' \xB7 <span class="mismatch">\u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0447\u0430\u0442 \u2260 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439 composer</span>' : "";
-    return `\u0430\u0433\u0435\u043D\u0442 \xB7 ${esc(m.label)} \xB7 ${esc(m.cdpLine)} \xB7 ${esc(m.dbLine)}${esc(m.windowLine)}${esc(m.cdpMeta)}${mismatch}`;
+    const details = m.cdpDetails ? `<div class="agent-cdp-details" title="${esc(m.cdpDetails)}">${esc(m.cdpDetails)}</div>` : "";
+    const main = `\u0430\u0433\u0435\u043D\u0442 \xB7 ${esc(m.label)} \xB7 ${esc(m.cdpLine)} \xB7 ${esc(m.dbLine)}${esc(m.windowLine)}${esc(m.cdpMeta)}${esc(m.switchLine)}${mismatch}`;
+    return main + details;
   }
   function applyAgentPanel(el, m) {
     el.dataset.phase = m.phase;
@@ -509,6 +540,12 @@
       if (text === lastSendText && now - lastSendAt < SEND_COOLDOWN_MS) return;
       if (now - lastSendAt < 800) return;
       if (s.agentBusy) return;
+      if (isComposerMismatch(s)) {
+        const ok = window.confirm(
+          "\u0412\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0447\u0430\u0442 \u043C\u043E\u0436\u0435\u0442 \u043D\u0435 \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0442\u044C \u0441 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u043C composer \u0432 Cursor. \u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0432\u0441\u0451 \u0440\u0430\u0432\u043D\u043E?"
+        );
+        if (!ok) return;
+      }
       const draft = text;
       store.dispatch({ type: "SEND_START" });
       lastSendAt = now;

@@ -32,9 +32,13 @@ async function main() {
     write('targets.default.json', targets, outDir);
     const cr = probes.find((p) => /cr - cr - Cursor/i.test(p.title)) ?? probes[0];
     if (cr) {
-      const v = { busy: cr.busy, reason: cr.reason };
-      write('composer-idle.json', cr.busy ? { busy: false, reason: 'idle' } : v, outDir);
-      write('composer-busy.json', cr.busy ? v : { busy: true, reason: 'stop-icon' }, outDir);
+      const v = { busy: cr.busy, reason: cr.reason, ...(cr.controls ? { controls: cr.controls } : {}) };
+      write('composer-idle.json', cr.busy ? { busy: false, reason: 'idle', controls: cr.controls } : v, outDir);
+      write(
+        'composer-busy.json',
+        cr.busy ? v : { busy: true, reason: 'stop-icon', controls: [{ role: 'stop', label: 'Stop', visible: true }] },
+        outDir
+      );
     }
     console.log('applied fixtures (busy template uses current cr window state)');
   } else {

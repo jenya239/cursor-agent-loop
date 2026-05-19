@@ -22,7 +22,7 @@ export interface CdpPort {
   ): Promise<ComposerAgentPageProbe[]>;
   switchComposer(
     composerId: string,
-    opts?: { windowTitle?: string }
+    opts?: { windowTitle?: string; chatName?: string }
   ): Promise<{ ok: boolean; reason: string }>;
   sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult>;
 }

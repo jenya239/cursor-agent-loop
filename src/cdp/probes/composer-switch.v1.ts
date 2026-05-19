@@ -5,16 +5,34 @@ export interface ComposerSwitchValue {
   reason: string;
 }
 
-export function buildComposerSwitchJs(composerId: string): string {
+export function buildComposerSwitchJs(composerId: string, chatName?: string): string {
   const id = JSON.stringify(composerId);
+  const name = JSON.stringify(chatName || '');
   return `(() => {
     const id = ${id};
+    const chatName = ${name};
     if (!id) return { ok: false, reason: 'no-id' };
-    const sel = '[data-composer-id="' + id + '"], [data-id="' + id + '"], [data-composer-id="' + id.toLowerCase() + '"]';
-    const el = document.querySelector(sel);
-    if (el) {
+    const click = (el) => {
+      if (!el) return false;
       el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      return { ok: true, reason: 'clicked' };
+      return true;
+    };
+    const byId =
+      '[data-composer-id="' + id + '"], [data-id="' + id + '"], [data-composer-id="' + id.toLowerCase() + '"]';
+    if (click(document.querySelector(byId))) return { ok: true, reason: 'clicked' };
+    if (chatName) {
+      const hist = document.querySelectorAll(
+        '.composer-history-item, [class*="composer"] [role="option"], [class*="history"] a, [class*="chat"]'
+      );
+      for (const el of hist) {
+        const t = (el.getAttribute('aria-label') || el.textContent || '').trim();
+        if (t && t.includes(chatName) && click(el)) return { ok: true, reason: 'history-name' };
+      }
+    }
+    const rows = document.querySelectorAll('[data-composer-id], [data-id]');
+    for (const el of rows) {
+      const v = el.getAttribute('data-composer-id') || el.getAttribute('data-id') || '';
+      if (v && v.includes(id.slice(0, 8)) && click(el)) return { ok: true, reason: 'partial-id' };
     }
     return { ok: false, reason: 'no-element' };
   })()`;

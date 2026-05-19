@@ -75,6 +75,7 @@ describe('HTTP API', () => {
     expect(res.body.chats.length).toBeGreaterThan(0);
     expect(res.body.agent.busy).toBe(true);
     expect(res.body.cdp.ok).toBe(true);
+    expect(res.body.switch).toBeDefined();
   });
 
   it('GET /api/agent for composer', async () => {

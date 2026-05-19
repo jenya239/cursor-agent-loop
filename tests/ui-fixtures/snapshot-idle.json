@@ -35,5 +35,6 @@
     "cdpBusy": false,
     "cdpOk": true,
     "at": 1
-  }
+  },
+  "switch": { "ok": true, "reason": "fixture-skip" }
 }
