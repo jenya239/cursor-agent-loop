@@ -8,7 +8,14 @@ import {
 } from './probes/composer-agent.v1';
 import type { CdpPort, CdpSendResult } from './port';
 
-export type FixtureScenario = 'idle' | 'busy' | 'down' | 'no-bar' | 'send-blocked' | 'switch-fail';
+export type FixtureScenario =
+  | 'idle'
+  | 'busy'
+  | 'down'
+  | 'no-bar'
+  | 'send-blocked'
+  | 'switch-fail'
+  | 'switch-ok';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 
@@ -54,10 +61,13 @@ export class FixtureCdp implements CdpPort {
 
   async switchComposer(
     _composerId: string,
-    _opts?: { windowTitle?: string }
-  ): Promise<{ ok: boolean; reason: string }> {
+    opts?: { windowTitle?: string; chatName?: string }
+  ): Promise<{ ok: boolean; reason: string; switchTarget?: string }> {
     if (this.scenario === 'switch-fail') {
       return { ok: false, reason: 'no-element' };
+    }
+    if (this.scenario === 'switch-ok') {
+      return { ok: true, reason: 'history-name', switchTarget: opts?.windowTitle || 'fixture-window' };
     }
     return { ok: true, reason: 'fixture-skip' };
   }

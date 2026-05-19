@@ -184,6 +184,22 @@ aside {
   color: var(--orange);
 }
 
+.switch-fallback {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--orange);
+}
+
+.switch-fallback button {
+  font: inherit;
+  cursor: pointer;
+  color: var(--blue);
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+}
+
 .agent-cdp-details {
   font-size: 10px;
   opacity: 0.85;

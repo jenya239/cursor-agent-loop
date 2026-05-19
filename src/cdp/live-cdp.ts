@@ -1,9 +1,10 @@
 import { checkCdpAvailable, cdpBaseUrl, listTargets } from './client';
+import { runComposerSend } from './composer-send';
 import { runProbeOnTargets } from './probes/registry';
 import { COMPOSER_AGENT_PROBE_ID, COMPOSER_SWITCH_PROBE_ID } from './port';
+import type { ComposerSwitchValue } from './probes/composer-switch.v1';
 import type { ComposerAgentPageProbe } from './probes/composer-agent.v1';
 import type { CdpPort, CdpSendResult } from './port';
-import { sendComposerMessage } from './send';
 
 export class LiveCdp implements CdpPort {
   constructor(private readonly base = cdpBaseUrl()) {}
@@ -24,7 +25,7 @@ export class LiveCdp implements CdpPort {
   async switchComposer(
     composerId: string,
     opts?: { windowTitle?: string; chatName?: string }
-  ): Promise<{ ok: boolean; reason: string }> {
+  ): Promise<{ ok: boolean; reason: string; switchTarget?: string }> {
     if (!(await this.isAvailable())) {
       return { ok: false, reason: 'cdp-unavailable' };
     }
@@ -36,19 +37,21 @@ export class LiveCdp implements CdpPort {
     const rows = (await runProbeOnTargets(COMPOSER_SWITCH_PROBE_ID, targets, {
       composerId,
       chatName: opts?.chatName,
-    })) as { ok: boolean; reason: string }[];
-    if (rows.some((r) => r.ok)) return { ok: true, reason: 'clicked' };
+    })) as ComposerSwitchValue[];
+    const hit = rows.find((r) => r.ok);
+    if (hit) {
+      return {
+        ok: true,
+        reason: hit.reason,
+        switchTarget: hit.target ?? opts?.windowTitle,
+      };
+    }
     return { ok: false, reason: rows[0]?.reason || 'no-element' };
   }
 
   async sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult> {
-    const r = await sendComposerMessage(text, { windowTitle: opts?.windowTitle });
-    return {
-      ok: true,
-      text: r.text,
-      pageTitle: r.pageTitle,
-      submitHow: r.submitHow,
-    };
+    const r = await runComposerSend(text, { windowTitle: opts?.windowTitle, base: this.base });
+    return { ok: true, text: r.text, pageTitle: r.pageTitle, submitHow: r.submitHow };
   }
 }
 

@@ -11,6 +11,7 @@ import {
   COMPOSER_SWITCH_PROBE_ID,
   buildComposerSwitchJs,
   parseComposerSwitchValue,
+  type ComposerSwitchValue,
 } from './composer-switch.v1';
 import type { CdpProbeId } from '../port';
 
@@ -32,7 +33,7 @@ export async function runProbeOnTargets(
   probeId: CdpProbeId,
   targets: CdpTarget[],
   params?: { composerId?: string; chatName?: string }
-): Promise<ComposerAgentPageProbe[] | { ok: boolean; reason: string }[]> {
+): Promise<ComposerAgentPageProbe[] | ComposerSwitchValue[]> {
   const pages = composerPageOrder(targets);
   if (probeId === COMPOSER_AGENT_PROBE_ID) {
     const out: ComposerAgentPageProbe[] = [];
@@ -54,7 +55,7 @@ export async function runProbeOnTargets(
   }
   if (probeId === COMPOSER_SWITCH_PROBE_ID) {
     const js = buildComposerSwitchJs(params?.composerId || '', params?.chatName);
-    const out: { ok: boolean; reason: string }[] = [];
+    const out: ComposerSwitchValue[] = [];
     for (const page of pages) {
       try {
         const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
@@ -65,7 +66,7 @@ export async function runProbeOnTargets(
             returnByValue: true,
           })) as { result?: { value?: unknown } };
           const v = parseComposerSwitchValue(r.result?.value);
-          if (v) out.push(v);
+          if (v) out.push(v.ok ? { ...v, target: page.title } : v);
         } finally {
           close();
         }

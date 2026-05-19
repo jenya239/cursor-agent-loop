@@ -18,6 +18,7 @@ export interface ComposerUiState {
 export interface ComposerSwitchResult {
   ok: boolean;
   reason: string;
+  switchTarget?: string;
 }
 
 export interface CursorSnapshot {

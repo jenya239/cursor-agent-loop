@@ -44,23 +44,15 @@ export function createApp(
     res.json(await cursor.snapshot(composerId));
   });
 
-  app.get('/api/cdp/agent', async (_req, res) => {
-    const st = await cursor.agentState();
-    res.json({ ok: st.cdpOk, busy: st.cdpBusy, agent: st, deprecated: true });
-  });
+  const legacyGone = (_req: express.Request, res: express.Response) => {
+    res
+      .status(410)
+      .set('Link', '</api/cursor/snapshot>; rel="alternate"')
+      .json({ error: 'gone', use: '/api/cursor/snapshot' });
+  };
 
-  app.get('/api/agent', async (req, res) => {
-    const composerId = typeof req.query.composerId === 'string' ? req.query.composerId : '';
-    if (!composerId) {
-      res.json({ ...(await cursor.agentState()), deprecated: true });
-      return;
-    }
-    if (!store.reader.getComposerData(composerId)) {
-      res.status(404).json({ error: 'chat not found' });
-      return;
-    }
-    res.json({ ...(await cursor.agentState(composerId)), deprecated: true });
-  });
+  app.get('/api/cdp/agent', legacyGone);
+  app.get('/api/agent', legacyGone);
 
   let sendBusy = false;
   let lastServerSend = { text: '', at: 0 };

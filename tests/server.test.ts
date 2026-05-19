@@ -61,11 +61,11 @@ describe('HTTP API', () => {
     expect(res.status).toBe(404);
   });
 
-  it('GET /api/cdp/agent', async () => {
+  it('GET /api/cdp/agent returns 410', async () => {
     const app = createApp(store, { cdp: CursorMock.port('busy') });
     const res = await request(app).get('/api/cdp/agent');
-    expect(res.status).toBe(200);
-    expect(res.body.busy).toBe(true);
+    expect(res.status).toBe(410);
+    expect(res.body.use).toBe('/api/cursor/snapshot');
   });
 
   it('GET /api/cursor/snapshot', async () => {
@@ -78,12 +78,10 @@ describe('HTTP API', () => {
     expect(res.body.switch).toBeDefined();
   });
 
-  it('GET /api/agent for composer', async () => {
+  it('GET /api/agent returns 410', async () => {
     const app = createApp(store, noCdp);
     const res = await request(app).get(`/api/agent?composerId=${BUSY_COMPOSER_ID}`);
-    expect(res.status).toBe(200);
-    expect(res.body.busy).toBe(true);
-    expect(res.body.dbBusy).toBe(true);
+    expect(res.status).toBe(410);
   });
 
   it('POST /api/send validates text', async () => {

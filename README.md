@@ -31,14 +31,14 @@ Cursor с remote debugging. UI — во **внешнем** браузере.
 | `GET /api/cursor/snapshot?composerId=` | Canonical: чаты, CDP, agent |
 | `GET /api/chats`, `/api/chats/:id?fresh=1` | Список / детали чата |
 | `POST /api/send` | `{ "text", "composerId?", "windowTitle?" }` |
-| `GET /api/agent` | Legacy (deprecated) |
-| `GET /api/cdp/agent` | Legacy (deprecated) |
+| `GET /api/agent`, `/api/cdp/agent` | 410 → use `/api/cursor/snapshot` |
 
 ## Fixtures
 
 ```bash
 npm run fixture:record
 npm run fixture:record -- --apply
+npm run probe:dump   # DOM structure for composer-switch (live Cursor)
 ```
 
 Два прогона `--apply`: агент idle, затем busy (агент работает) — для точных `composer-busy.json`.

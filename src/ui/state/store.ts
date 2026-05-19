@@ -2,6 +2,7 @@ import type { AgentState } from '../../agent-model';
 import type { ChatMessage, ChatSummary } from '../../db/types';
 import type { CursorSnapshot } from '../../cursor/types';
 import type { UiAction } from './actions';
+import { agentBus } from '../agent-bus';
 
 export interface UiState {
   activeComposerId: string | null;
@@ -119,6 +120,9 @@ export class CrStore {
 
   dispatch(action: UiAction): void {
     this.state = reduceUi(this.state, action);
+    if (action.type === 'SNAPSHOT' && action.agentEvent) {
+      agentBus.emit(action.agentEvent);
+    }
     for (const fn of this.subs) fn(this.state);
   }
 

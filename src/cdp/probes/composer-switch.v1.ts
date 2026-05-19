@@ -3,6 +3,7 @@ export const COMPOSER_SWITCH_PROBE_ID = 'composer-switch.v1' as const;
 export interface ComposerSwitchValue {
   ok: boolean;
   reason: string;
+  target?: string;
 }
 
 export function buildComposerSwitchJs(composerId: string, chatName?: string): string {
@@ -14,25 +15,34 @@ export function buildComposerSwitchJs(composerId: string, chatName?: string): st
     if (!id) return { ok: false, reason: 'no-id' };
     const click = (el) => {
       if (!el) return false;
+      el.scrollIntoView({ block: 'nearest' });
       el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       return true;
     };
     const byId =
       '[data-composer-id="' + id + '"], [data-id="' + id + '"], [data-composer-id="' + id.toLowerCase() + '"]';
     if (click(document.querySelector(byId))) return { ok: true, reason: 'clicked' };
+    const short = id.slice(0, 8);
+    for (const el of document.querySelectorAll('[data-composer-id], [data-id]')) {
+      const v = el.getAttribute('data-composer-id') || el.getAttribute('data-id') || '';
+      if (v && (v === id || v.startsWith(short))) {
+        if (click(el)) return { ok: true, reason: 'partial-id' };
+      }
+    }
     if (chatName) {
       const hist = document.querySelectorAll(
-        '.composer-history-item, [class*="composer"] [role="option"], [class*="history"] a, [class*="chat"]'
+        '.composer-history-item, [class*="composer"] [role="option"], [class*="history"] a, [class*="history"] [role="listitem"], [class*="chat-history"] *'
       );
       for (const el of hist) {
         const t = (el.getAttribute('aria-label') || el.textContent || '').trim();
         if (t && t.includes(chatName) && click(el)) return { ok: true, reason: 'history-name' };
       }
     }
-    const rows = document.querySelectorAll('[data-composer-id], [data-id]');
+    const rows = document.querySelectorAll('[aria-label*="Chat" i], [aria-label*="чат" i]');
     for (const el of rows) {
-      const v = el.getAttribute('data-composer-id') || el.getAttribute('data-id') || '';
-      if (v && v.includes(id.slice(0, 8)) && click(el)) return { ok: true, reason: 'partial-id' };
+      if (chatName && (el.getAttribute('aria-label') || '').includes(chatName) && click(el)) {
+        return { ok: true, reason: 'aria-chat' };
+      }
     }
     return { ok: false, reason: 'no-element' };
   })()`;
@@ -42,5 +52,6 @@ export function parseComposerSwitchValue(raw: unknown): ComposerSwitchValue | nu
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.ok !== 'boolean' || typeof o.reason !== 'string') return null;
-  return { ok: o.ok, reason: o.reason };
+  const target = typeof o.target === 'string' ? o.target : undefined;
+  return target ? { ok: o.ok, reason: o.reason, target } : { ok: o.ok, reason: o.reason };
 }

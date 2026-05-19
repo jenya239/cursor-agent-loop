@@ -49,9 +49,12 @@ export class CursorModel {
       return hit.result;
     }
     const data = this.store.reader.getComposerData(composerId);
-    const result = await this.cdp.switchComposer(composerId, {
-      chatName: data?.name,
-    });
+    const raw = await this.cdp.switchComposer(composerId, { chatName: data?.name });
+    const result: ComposerSwitchResult = {
+      ok: raw.ok,
+      reason: raw.reason,
+      switchTarget: raw.switchTarget,
+    };
     this.switchCache = { composerId, at: Date.now(), result };
     return result;
   }

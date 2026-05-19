@@ -166,6 +166,7 @@
   function isComposerMismatch(state) {
     if (!state.activeComposerId || !state.snapshot?.cdp.ok) return false;
     const sw = state.snapshot.switch;
+    if (sw?.ok) return false;
     if (sw && !sw.ok) return true;
     const chatName = (state.chatMeta?.name || "").trim();
     const win = (state.agent?.cdpWindowTitle || "").trim();
@@ -195,7 +196,8 @@
         cdpMeta: "",
         cdpDetails: "",
         switchLine: "",
-        mismatch: false
+        mismatch: false,
+        composerId: state.activeComposerId
       };
     }
     const label = st.busy ? "\u0420\u0410\u0411\u041E\u0422\u0410\u0415\u0422" : "\u0416\u0414\u0401\u0422";
@@ -206,7 +208,7 @@
     const busyN = state.snapshot?.composerByWindow?.filter((w) => w.probe?.busy).length ?? 0;
     const cdpMeta = state.snapshot?.cdp?.ok && n ? ` \xB7 CDP ${n} \u043E\u043A\u043D${busyN ? `, ${busyN} \u0437\u0430\u043D\u044F\u0442\u043E` : ""}` : "";
     const sw = state.snapshot?.switch;
-    const switchLine = sw ? ` \xB7 switch: ${sw.ok ? "ok" : "fail"}(${sw.reason})` : "";
+    const switchLine = sw ? ` \xB7 switch: ${sw.ok ? "ok" : "fail"}(${sw.reason})${sw.switchTarget ? ` \u2192 ${sw.switchTarget}` : ""}` : "";
     const cdpDetails = formatCdpDetails(state);
     return {
       phase: st.phase,
@@ -217,7 +219,8 @@
       cdpMeta,
       cdpDetails,
       switchLine,
-      mismatch: isComposerMismatch(state)
+      mismatch: isComposerMismatch(state),
+      composerId: state.activeComposerId
     };
   }
   function workspaceOptions(chats) {
@@ -233,6 +236,24 @@
   function cdpWindowOptions(state) {
     return (state.snapshot?.windows || []).filter((w) => w.hasComposer || w.type === "page").map((w) => w.title);
   }
+
+  // src/ui/agent-bus.ts
+  var AgentBusImpl = class {
+    subs = /* @__PURE__ */ new Map();
+    on(event, fn) {
+      let set = this.subs.get(event);
+      if (!set) {
+        set = /* @__PURE__ */ new Set();
+        this.subs.set(event, set);
+      }
+      set.add(fn);
+      return () => set.delete(fn);
+    }
+    emit(event) {
+      for (const fn of this.subs.get(event) ?? []) fn();
+    }
+  };
+  var agentBus = new AgentBusImpl();
 
   // src/ui/state/store.ts
   var initialUiState = (embedded) => ({
@@ -326,6 +347,9 @@
     }
     dispatch(action) {
       this.state = reduceUi(this.state, action);
+      if (action.type === "SNAPSHOT" && action.agentEvent) {
+        agentBus.emit(action.agentEvent);
+      }
       for (const fn of this.subs) fn(this.state);
     }
     subscribe(fn) {
@@ -387,13 +411,20 @@
   // src/ui/views/render-agent-panel.ts
   function renderAgentPanelHtml(m) {
     const mismatch = m.mismatch ? ' \xB7 <span class="mismatch">\u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0447\u0430\u0442 \u2260 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439 composer</span>' : "";
+    const fallback = m.mismatch && m.composerId ? `<div class="switch-fallback">\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0447\u0430\u0442 \u0432 Cursor \u0432\u0440\u0443\u0447\u043D\u0443\u044E \xB7 <button type="button" class="copy-composer-id">\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C id</button></div>` : "";
     const details = m.cdpDetails ? `<div class="agent-cdp-details" title="${esc(m.cdpDetails)}">${esc(m.cdpDetails)}</div>` : "";
     const main = `\u0430\u0433\u0435\u043D\u0442 \xB7 ${esc(m.label)} \xB7 ${esc(m.cdpLine)} \xB7 ${esc(m.dbLine)}${esc(m.windowLine)}${esc(m.cdpMeta)}${esc(m.switchLine)}${mismatch}`;
-    return main + details;
+    return main + fallback + details;
   }
   function applyAgentPanel(el, m) {
     el.dataset.phase = m.phase;
     el.innerHTML = renderAgentPanelHtml(m);
+    const btn = el.querySelector(".copy-composer-id");
+    if (btn && m.composerId) {
+      btn.addEventListener("click", () => {
+        void navigator.clipboard.writeText(m.composerId);
+      });
+    }
   }
 
   // src/ui/app.ts
@@ -479,18 +510,19 @@
     }
     store.subscribe(render);
     async function loadList() {
-      const [body, st] = await Promise.all([api.listChats(), api.status()]);
+      const [snap, st] = await Promise.all([api.snapshot(), api.status()]);
+      store.dispatch({ type: "SNAPSHOT", snap, agentEvent: null });
       store.dispatch({
         type: "SET_CHATS",
-        chats: body.chats,
-        partial: body.partial,
-        loading: body.loading || st.loading
+        chats: snap.chats,
+        partial: st.partial,
+        loading: st.loading
       });
       const s = store.get();
       const n = filterChats(s.chats, s.wsFilter).length;
-      const partial = body.partial || st.partial ? " \xB7~" : "";
+      const partial = st.partial ? " \xB7~" : "";
       const live = s.activeComposerId ? " \xB7 live" : "";
-      if (st.loading || body.loading) {
+      if (st.loading) {
         store.dispatch({ type: "STATUS", text: `${n}\u2026`, loading: true });
         setTimeout(() => void loadList().catch(onListError), 1500);
       } else {
@@ -501,7 +533,7 @@
           void openChat(saved);
         }
       }
-      fillWorkspaceFilter(s.chats);
+      fillWorkspaceFilter(snap.chats);
     }
     function fillWorkspaceFilter(chats) {
       const cur = wsFilterEl.value;
@@ -523,7 +555,6 @@
           chatEl.innerHTML = renderChatHtml(chat);
           scrollChatBottom();
         }
-        await loadList();
         scheduler.start();
         composeInput.focus();
       } catch (e) {
@@ -637,6 +668,9 @@
         }
       })();
     });
+    window.crAgent = {
+      on: (e, fn) => agentBus.on(e, fn)
+    };
     scheduler.start();
     void loadList().catch(onListError);
   }

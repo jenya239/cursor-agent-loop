@@ -13,6 +13,7 @@ import { renderChatHtml } from './views/render-chat';
 import { renderListHtml } from './views/render-list';
 import { applyAgentPanel } from './views/render-agent-panel';
 import { isComposerMismatch } from './state/selectors';
+import { agentBus } from './agent-bus';
 
 const LS_LAST_CHAT = 'cr.lastComposerId';
 const SEND_COOLDOWN_MS = 8000;
@@ -113,18 +114,19 @@ export function boot(): void {
   store.subscribe(render);
 
   async function loadList() {
-    const [body, st] = await Promise.all([api.listChats(), api.status()]);
+    const [snap, st] = await Promise.all([api.snapshot(), api.status()]);
+    store.dispatch({ type: 'SNAPSHOT', snap, agentEvent: null });
     store.dispatch({
       type: 'SET_CHATS',
-      chats: body.chats,
-      partial: body.partial,
-      loading: body.loading || st.loading,
+      chats: snap.chats,
+      partial: st.partial,
+      loading: st.loading,
     });
     const s = store.get();
     const n = filterChats(s.chats, s.wsFilter).length;
-    const partial = body.partial || st.partial ? ' ·~' : '';
+    const partial = st.partial ? ' ·~' : '';
     const live = s.activeComposerId ? ' · live' : '';
-    if (st.loading || body.loading) {
+    if (st.loading) {
       store.dispatch({ type: 'STATUS', text: `${n}…`, loading: true });
       setTimeout(() => void loadList().catch(onListError), 1500);
     } else {
@@ -135,7 +137,7 @@ export function boot(): void {
         void openChat(saved);
       }
     }
-    fillWorkspaceFilter(s.chats);
+    fillWorkspaceFilter(snap.chats);
   }
 
   function fillWorkspaceFilter(chats: import('./api/types').ChatSummary[]) {
@@ -164,7 +166,6 @@ export function boot(): void {
         chatEl.innerHTML = renderChatHtml(chat);
         scrollChatBottom();
       }
-      await loadList();
       scheduler.start();
       composeInput.focus();
     } catch (e) {
@@ -285,6 +286,10 @@ export function boot(): void {
       }
     })();
   });
+
+  (window as Window & { crAgent?: { on: typeof agentBus.on } }).crAgent = {
+    on: (e, fn) => agentBus.on(e, fn),
+  };
 
   scheduler.start();
   void loadList().catch(onListError);

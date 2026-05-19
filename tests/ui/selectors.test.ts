@@ -22,7 +22,7 @@ describe('selectors', () => {
   });
 
   it('isComposerMismatch when chat name not in window title', () => {
-    const snap = idle as CursorSnapshot;
+    const snap = { ...(idle as CursorSnapshot), switch: null };
     const s = {
       ...base,
       activeComposerId: '11111111-1111-1111-1111-111111111111',
@@ -31,6 +31,18 @@ describe('selectors', () => {
       agent: { ...snap.agent, cdpWindowTitle: 'cr - cr - Cursor' },
     };
     expect(isComposerMismatch(s)).toBe(true);
+  });
+
+  it('no mismatch when switch ok', () => {
+    const snap = idle as CursorSnapshot;
+    const s = {
+      ...base,
+      activeComposerId: '11111111-1111-1111-1111-111111111111',
+      snapshot: snap,
+      chatMeta: { composerId: 'x', name: 'UniqueChatTitleXYZ' },
+      agent: { ...snap.agent, cdpWindowTitle: 'cr - cr - Cursor' },
+    };
+    expect(isComposerMismatch(s)).toBe(false);
   });
 
   it('agentPanelModel includes switch line', () => {

@@ -23,6 +23,6 @@ export interface CdpPort {
   switchComposer(
     composerId: string,
     opts?: { windowTitle?: string; chatName?: string }
-  ): Promise<{ ok: boolean; reason: string }>;
+  ): Promise<{ ok: boolean; reason: string; switchTarget?: string }>;
   sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult>;
 }

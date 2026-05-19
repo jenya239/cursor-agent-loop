@@ -12,6 +12,7 @@ export function filterChats(chats: ChatSummary[], wsFilter: string): ChatSummary
 export function isComposerMismatch(state: UiState): boolean {
   if (!state.activeComposerId || !state.snapshot?.cdp.ok) return false;
   const sw = state.snapshot.switch;
+  if (sw?.ok) return false;
   if (sw && !sw.ok) return true;
   const chatName = (state.chatMeta?.name || '').trim();
   const win = (state.agent?.cdpWindowTitle || '').trim();
@@ -31,6 +32,7 @@ export interface AgentPanelModel {
   cdpDetails: string;
   switchLine: string;
   mismatch: boolean;
+  composerId: string | null;
 }
 
 function formatCdpDetails(state: UiState): string {
@@ -60,6 +62,7 @@ export function agentPanelModel(state: UiState): AgentPanelModel {
       cdpDetails: '',
       switchLine: '',
       mismatch: false,
+      composerId: state.activeComposerId,
     };
   }
   const label = st.busy ? 'РАБОТАЕТ' : 'ЖДЁТ';
@@ -77,7 +80,9 @@ export function agentPanelModel(state: UiState): AgentPanelModel {
   const cdpMeta =
     state.snapshot?.cdp?.ok && n ? ` · CDP ${n} окн${busyN ? `, ${busyN} занято` : ''}` : '';
   const sw = state.snapshot?.switch;
-  const switchLine = sw ? ` · switch: ${sw.ok ? 'ok' : 'fail'}(${sw.reason})` : '';
+  const switchLine = sw
+    ? ` · switch: ${sw.ok ? 'ok' : 'fail'}(${sw.reason})${sw.switchTarget ? ` → ${sw.switchTarget}` : ''}`
+    : '';
   const cdpDetails = formatCdpDetails(state);
   return {
     phase: st.phase,
@@ -89,6 +94,7 @@ export function agentPanelModel(state: UiState): AgentPanelModel {
     cdpDetails,
     switchLine,
     mismatch: isComposerMismatch(state),
+    composerId: state.activeComposerId,
   };
 }
 
