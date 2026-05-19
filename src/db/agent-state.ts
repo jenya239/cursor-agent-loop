@@ -30,5 +30,9 @@ export function isAgentBusy(data: ComposerData | null | undefined): boolean {
   if (last.type === 2 && (st === 'generating' || data.isContinuationInProgress)) {
     return bubbleInProgress(map[last.bubbleId]);
   }
+  for (const h of headers.slice(-6)) {
+    const toolSt = map[h.bubbleId]?.toolFormerData?.status;
+    if (toolSt && !DONE_TOOL.has(toolSt)) return true;
+  }
   return false;
 }

@@ -67,6 +67,14 @@ describe('HTTP API', () => {
     expect(res.body.busy).toBe(true);
   });
 
+  it('GET /api/agent for composer', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app).get(`/api/agent?composerId=${BUSY_COMPOSER_ID}`);
+    expect(res.status).toBe(200);
+    expect(res.body.busy).toBe(true);
+    expect(res.body.dbBusy).toBe(true);
+  });
+
   it('POST /api/send validates text', async () => {
     const app = createApp(store, { ...noCdp, send: async (t) => ({ ok: true, text: t }) });
     const bad = await request(app).post('/api/send').send({ text: '  ' });

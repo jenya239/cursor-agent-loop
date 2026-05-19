@@ -4,7 +4,8 @@ import { CursorDbReader } from './db/reader';
 import { globalDbPath } from './db/paths';
 import { ChatStore } from './chat-store';
 import { checkCdpAvailable, cdpBaseUrl } from './cdp/client';
-import { readComposerAgentBusy } from './cdp/agent-ui';
+import { AgentModel } from './agent-model';
+import { readComposerAgentDetail } from './cdp/agent-ui';
 import { sendComposerMessage } from './cdp/send';
 
 export type SendHandler = (text: string) => Promise<{ ok: true; text: string }>;
@@ -13,7 +14,7 @@ export type CdpAgentBusyFn = () => Promise<boolean>;
 
 export function createApp(
   store: ChatStore,
-  opts?: { send?: SendHandler; getCdpAgentBusy?: CdpAgentBusyFn }
+  opts?: { send?: SendHandler; getCdpAgentBusy?: CdpAgentBusyFn; agentModel?: AgentModel }
 ): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
@@ -21,7 +22,10 @@ export function createApp(
     const r = await sendComposerMessage(text);
     return { ok: true, text: r.text };
   });
-  const getCdpAgentBusy = opts?.getCdpAgentBusy ?? readComposerAgentBusy;
+  const getCdpAgentBusy = opts?.getCdpAgentBusy ?? (async () => (await readComposerAgentDetail()).busy);
+  const agentModel =
+    opts?.agentModel ??
+    new AgentModel(store.reader, async () => ({ ok: true, busy: await getCdpAgentBusy() }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
@@ -33,13 +37,21 @@ export function createApp(
   });
 
   app.get('/api/cdp/agent', async (_req, res) => {
-    try {
-      const busy = await getCdpAgentBusy();
-      res.json({ ok: true, busy });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      res.json({ ok: false, busy: false, error: msg });
+    const st = await agentModel.forCdp();
+    res.json({ ok: st.cdpOk, busy: st.cdpBusy, agent: st });
+  });
+
+  app.get('/api/agent', async (req, res) => {
+    const composerId = typeof req.query.composerId === 'string' ? req.query.composerId : '';
+    if (!composerId) {
+      res.json(await agentModel.forCdp());
+      return;
     }
+    if (!store.reader.getComposerData(composerId)) {
+      res.status(404).json({ error: 'chat not found' });
+      return;
+    }
+    res.json(await agentModel.forComposer(composerId));
   });
 
   let sendBusy = false;
@@ -123,7 +135,7 @@ export function createApp(
     res.json(store.status());
   });
 
-  app.get('/api/chats/:id', (req, res) => {
+  app.get('/api/chats/:id', async (req, res) => {
     const composerId = req.params.id;
     const data = store.reader.getComposerData(composerId);
     if (!data) {
@@ -131,14 +143,16 @@ export function createApp(
       return;
     }
     const fresh = req.query.fresh === '1';
-    const { summary, messages, agentBusy, agentStatus } = store.getChat(composerId, fresh);
+    const { summary, messages } = store.getChat(composerId, fresh);
+    const agent = await agentModel.forComposer(composerId);
     res.json({
       ...summary,
       composerId,
       messages,
-      agentBusy,
-      agentBusyDb: agentBusy,
-      agentStatus,
+      agent,
+      agentBusy: agent.busy,
+      agentBusyDb: agent.dbBusy,
+      agentStatus: agent.dbStatus,
     });
   });
 

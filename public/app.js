@@ -6,6 +6,8 @@ const wsFilterEl = document.getElementById('ws-filter');
 const composeInput = document.getElementById('compose-input');
 const composeSend = document.getElementById('compose-send');
 const agentIndicatorEl = document.getElementById('agent-indicator');
+const agentPanelEl = document.getElementById('agent-panel');
+const LS_LAST_CHAT = 'cr.lastComposerId';
 let activeId = null;
 let sending = false;
 let lastSendAt = 0;
@@ -22,9 +24,8 @@ let listPollTimer = null;
 let chatPollTimer = null;
 let lastChatSig = '';
 let allChats = [];
-let cdpAgentBusy = false;
-let lastDbAgentBusy = false;
-let cdpPollTimer = null;
+let lastAgentState = null;
+let agentPollTimer = null;
 
 const CHAT_POLL_MS = 1000;
 const CDP_AGENT_POLL_MS = 800;
@@ -122,65 +123,81 @@ function setStatus(text, loading) {
   statusEl.classList.toggle('loading', !!loading);
 }
 
-function renderAgentIndicator(busy, source) {
-  agentIndicatorEl.classList.toggle('busy', busy);
-  agentIndicatorEl.classList.toggle('idle', !busy);
-  agentIndicatorEl.textContent = busy ? 'AGENT · работает' : 'AGENT · ждёт';
-  agentIndicatorEl.title = busy
-    ? `Агент работает (${source || '?'})`
-    : 'Агент в активном чате Cursor не работает';
-}
-
-function mergeAgentBusy(chat) {
-  const db = !!chat.agentBusyDb || !!chat.agentBusy;
-  const cdp = cdpAgentBusy;
-  const busy = db || cdp;
-  const source = busy ? (cdp && db ? 'cdp+db' : cdp ? 'cdp' : 'db') : '';
-  return { ...chat, agentBusy: busy, agentSource: source };
-}
-
-function syncAgentUi(chat) {
-  const merged = mergeAgentBusy(chat);
-  const { busy, event } = window.crAgent.sync(merged, activeId);
-  renderAgentIndicator(busy, merged.agentSource);
-  if (event === 'agent:idle') {
-    const n = chat.messages?.length ?? 0;
-    setStatus(`готово · ${n} msg`, false);
-  }
-  return { busy, event };
-}
-
-async function pollCdpAgent() {
+function saveLastChat(id) {
   try {
-    const res = await fetch('/api/cdp/agent');
-    const body = await res.json();
-    if (!body.ok) return;
-    const next = !!body.busy;
-    if (next === cdpAgentBusy) return;
-    cdpAgentBusy = next;
-    if (activeId) {
-      syncAgentUi({
-        composerId: activeId,
-        agentBusyDb: lastDbAgentBusy,
-        messages: [],
-      });
-    } else {
-      renderAgentIndicator(cdpAgentBusy, 'cdp');
-    }
+    localStorage.setItem(LS_LAST_CHAT, id);
   } catch {
     /* ignore */
   }
 }
 
-function startCdpAgentPoll() {
-  stopCdpAgentPoll();
-  pollCdpAgent();
-  cdpPollTimer = setInterval(pollCdpAgent, CDP_AGENT_POLL_MS);
+function loadLastChatId() {
+  try {
+    return localStorage.getItem(LS_LAST_CHAT);
+  } catch {
+    return null;
+  }
 }
 
-function stopCdpAgentPoll() {
-  if (cdpPollTimer) clearInterval(cdpPollTimer);
-  cdpPollTimer = null;
+function renderAgentState(st) {
+  if (!st) {
+    agentPanelEl.textContent = 'агент · нет данных';
+    agentPanelEl.dataset.phase = 'unknown';
+    agentIndicatorEl.textContent = 'AGENT · ?';
+    agentIndicatorEl.className = 'agent-indicator idle';
+    return;
+  }
+  agentPanelEl.dataset.phase = st.phase;
+  const label = st.busy ? 'РАБОТАЕТ' : 'ЖДЁТ';
+  const cdp = st.cdpOk
+    ? st.cdpBusy
+      ? `Cursor занят (${st.cdpReason || '?'})`
+      : 'Cursor свободен'
+    : 'CDP недоступен';
+  const db = st.dbBusy ? `чат занят (${st.dbStatus || '?'})` : 'чат свободен';
+  const win = st.cdpWindowTitle ? ` · ${st.cdpWindowTitle}` : '';
+  agentPanelEl.textContent = `агент · ${label} · ${cdp} · ${db}${win}`;
+  agentIndicatorEl.textContent = `AGENT · ${st.busy ? 'работает' : 'ждёт'}`;
+  agentIndicatorEl.className = `agent-indicator ${st.busy ? 'busy' : 'idle'}`;
+  agentIndicatorEl.title = agentPanelEl.textContent;
+}
+
+function applyAgentEvents(st, prevBusy) {
+  if (!activeId || !st) return;
+  window.crAgent.sync(
+    { composerId: activeId, agentBusy: st.busy, agentBusyDb: st.dbBusy, messages: [] },
+    activeId
+  );
+  if (prevBusy && !st.busy) {
+    const n = document.querySelectorAll('#chat .msg').length;
+    setStatus(`готово · ${n} msg`, false);
+  }
+}
+
+async function pollAgent() {
+  const q = activeId ? `?composerId=${encodeURIComponent(activeId)}` : '';
+  try {
+    const res = await fetch(`/api/agent${q}`);
+    if (!res.ok) return;
+    const st = await res.json();
+    const prevBusy = lastAgentState?.busy;
+    lastAgentState = st;
+    renderAgentState(st);
+    applyAgentEvents(st, prevBusy);
+  } catch {
+    /* ignore */
+  }
+}
+
+function startAgentPoll() {
+  stopAgentPoll();
+  pollAgent();
+  agentPollTimer = setInterval(pollAgent, CDP_AGENT_POLL_MS);
+}
+
+function stopAgentPoll() {
+  if (agentPollTimer) clearInterval(agentPollTimer);
+  agentPollTimer = null;
 }
 
 function filterChats(chats) {
@@ -288,6 +305,10 @@ async function loadList() {
     setStatus(`${n}${partial}${live}`, false);
     stopListPoll();
     refreshBtn.disabled = false;
+    const saved = loadLastChatId();
+    if (saved && !activeId && allChats.some((c) => c.composerId === saved)) {
+      openChat(saved);
+    }
   }
 }
 
@@ -369,8 +390,10 @@ async function loadChat(id, opts = {}) {
   const data = await res.json();
 
   data.composerId = data.composerId || id;
-  lastDbAgentBusy = !!data.agentBusyDb;
-  syncAgentUi(data);
+  if (data.agent) {
+    lastAgentState = data.agent;
+    renderAgentState(data.agent);
+  }
 
   const sig = chatSignature(data);
   if (!force && sig === lastChatSig) return data;
@@ -397,16 +420,18 @@ function onListError(e) {
 async function openChat(id) {
   stopChatPoll();
   activeId = id;
+  saveLastChat(id);
   lastChatSig = '';
+  lastAgentState = null;
   window.crAgent.reset();
-  cdpAgentBusy = false;
-  renderAgentIndicator(false, '');
+  renderAgentState(null);
   setComposeEnabled(true);
 
   try {
     await loadChat(id, { force: true, pinBottom: true });
     await loadList();
     startChatPoll(id);
+    startAgentPoll();
     composeInput.focus();
   } catch (e) {
     chatEl.innerHTML = `<p class="err">${esc(e.message)}</p>`;
@@ -423,5 +448,5 @@ function esc(s) {
 
 setStatus('Загрузка…', true);
 refreshBtn.disabled = true;
-startCdpAgentPoll();
+startAgentPoll();
 loadList().catch(onListError);

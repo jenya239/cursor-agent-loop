@@ -158,6 +158,33 @@ aside {
   background: var(--base3);
 }
 
+.agent-panel {
+  flex-shrink: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-bottom: 2px solid var(--base1);
+  background: var(--base2);
+  color: var(--base01);
+}
+
+.agent-panel[data-phase='busy'] {
+  background: var(--orange);
+  color: var(--base3);
+  border-bottom-color: var(--red);
+}
+
+.agent-panel[data-phase='idle'] {
+  background: var(--base2);
+  color: var(--base00);
+}
+
+.agent-panel[data-phase='unknown'] {
+  background: var(--base3);
+  color: var(--base1);
+}
+
 #chat {
   flex: 1;
   min-height: 0;
