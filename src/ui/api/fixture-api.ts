@@ -46,8 +46,8 @@ export class FixtureApi implements CrApi {
   }
 
   async listChats(): Promise<ChatsPayload> {
-    const s = await this.snapshot();
-    return { chats: s.chats, partial: false };
+    const j = load<{ chats: ChatsPayload['chats']; partial?: boolean }>('chats-list.json');
+    return { chats: j.chats, partial: !!j.partial };
   }
 
   async status(): Promise<StoreStatus> {

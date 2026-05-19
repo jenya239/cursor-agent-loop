@@ -10,8 +10,10 @@
   }
   var LiveApi = class {
     async snapshot(composerId) {
-      const q = composerId ? `?composerId=${encodeURIComponent(composerId)}` : "";
-      return json(await fetch(`/api/cursor/snapshot${q}`));
+      const params = new URLSearchParams();
+      if (composerId) params.set("composerId", composerId);
+      const q = params.toString();
+      return json(await fetch(`/api/cursor/snapshot${q ? `?${q}` : ""}`));
     }
     async chat(composerId, fresh = false) {
       const q = fresh ? "?fresh=1" : "";
@@ -87,6 +89,38 @@
     return `${busy}:${msgs.length}:${last.bubbleId}:${(last.text || "").length}`;
   }
 
+  // src/ui/poll/snapshot-stream.ts
+  function openSnapshotStream(composerId, onSnap, onFallback) {
+    if (typeof EventSource === "undefined") {
+      onFallback();
+      return { close() {
+      } };
+    }
+    const params = new URLSearchParams();
+    if (composerId) params.set("composerId", composerId);
+    const es = new EventSource(`/api/cursor/events?${params}`);
+    let prevBusy = null;
+    es.onmessage = (ev) => {
+      try {
+        const snap = JSON.parse(ev.data);
+        const busy = snap.agent.busy;
+        const agentEvent = prevBusy === null ? null : busy !== prevBusy ? busy ? "agent:busy" : "agent:idle" : null;
+        prevBusy = busy;
+        onSnap(snap, agentEvent);
+      } catch {
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      onFallback();
+    };
+    return {
+      close() {
+        es.close();
+      }
+    };
+  }
+
   // src/ui/poll/poll-scheduler.ts
   var POLL_MS = 800;
   var defaultClock = {
@@ -102,15 +136,51 @@
       this.clock = clock;
     }
     stop;
+    stream;
     prevAgentBusy = false;
+    usePoll = false;
     start() {
-      this.stop?.();
+      this.halt();
+      if (!this.usePoll && typeof EventSource !== "undefined") {
+        const id = this.store.get().activeComposerId;
+        this.stream = openSnapshotStream(
+          id,
+          (snap, ev) => this.applySnapshot(snap, ev),
+          () => {
+            this.usePoll = true;
+            this.startPoll();
+          }
+        );
+        return;
+      }
+      this.startPoll();
+    }
+    startPoll() {
       void this.tick();
       this.stop = this.clock.setInterval(() => void this.tick(), POLL_MS);
     }
     halt() {
       this.stop?.();
       this.stop = void 0;
+      this.stream?.close();
+      this.stream = void 0;
+    }
+    applySnapshot(snap, ev) {
+      const state = this.store.get();
+      const id = state.activeComposerId;
+      this.store.dispatch({ type: "SNAPSHOT", snap, agentEvent: ev });
+      if (id && ev) {
+        applyAgentPoll(this.prevAgentBusy, id, {
+          composerId: id,
+          agentBusy: snap.agent.busy,
+          agentStatus: snap.agent.dbStatus,
+          messageCount: state.messages.length
+        });
+      }
+      this.prevAgentBusy = snap.agent.busy;
+      if (id && shouldRefreshChat({ prevAgent: state.agent, snap, force: false, afterSend: false })) {
+        void this.refreshChat(id, true, true);
+      }
     }
     async tick() {
       const state = this.store.get();
@@ -119,27 +189,7 @@
       try {
         const snap = await this.api.snapshot(id ?? void 0);
         const ev = prevAgent ? agentTransition(prevAgent, snap.agent) : null;
-        this.store.dispatch({ type: "SNAPSHOT", snap, agentEvent: ev });
-        if (snap.chats.length) {
-          this.store.dispatch({
-            type: "SET_CHATS",
-            chats: snap.chats,
-            partial: false,
-            loading: false
-          });
-        }
-        if (id && ev) {
-          applyAgentPoll(this.prevAgentBusy, id, {
-            composerId: id,
-            agentBusy: snap.agent.busy,
-            agentStatus: snap.agent.dbStatus,
-            messageCount: state.messages.length
-          });
-        }
-        this.prevAgentBusy = snap.agent.busy;
-        if (id && shouldRefreshChat({ prevAgent, snap, force: false, afterSend: false })) {
-          await this.refreshChat(id, true, true);
-        }
+        this.applySnapshot(snap, ev);
       } catch {
       }
     }
@@ -283,7 +333,6 @@
           snapshot: action.snap,
           agent: action.snap.agent,
           agentBusy: action.snap.agent.busy,
-          chats: action.snap.chats.length ? action.snap.chats : state.chats,
           lastAgentEvent: action.agentEvent ?? state.lastAgentEvent
         };
       case "CHAT_LOADED": {
@@ -446,6 +495,7 @@
     const agentIndicatorEl = document.getElementById("agent-indicator");
     const agentPanelEl = document.getElementById("agent-panel");
     const embedWarn = document.getElementById("embed-warn");
+    const dbPathEl = document.getElementById("db-path");
     let lastSendAt = 0;
     let lastSendText = "";
     function saveLastChat(id) {
@@ -510,19 +560,18 @@
     }
     store.subscribe(render);
     async function loadList() {
-      const [snap, st] = await Promise.all([api.snapshot(), api.status()]);
-      store.dispatch({ type: "SNAPSHOT", snap, agentEvent: null });
+      const [body, st] = await Promise.all([api.listChats(), api.status()]);
       store.dispatch({
         type: "SET_CHATS",
-        chats: snap.chats,
-        partial: st.partial,
-        loading: st.loading
+        chats: body.chats,
+        partial: body.partial || st.partial,
+        loading: body.loading || st.loading
       });
       const s = store.get();
       const n = filterChats(s.chats, s.wsFilter).length;
-      const partial = st.partial ? " \xB7~" : "";
+      const partial = body.partial || st.partial ? " \xB7~" : "";
       const live = s.activeComposerId ? " \xB7 live" : "";
-      if (st.loading) {
+      if (st.loading || body.loading) {
         store.dispatch({ type: "STATUS", text: `${n}\u2026`, loading: true });
         setTimeout(() => void loadList().catch(onListError), 1500);
       } else {
@@ -533,7 +582,7 @@
           void openChat(saved);
         }
       }
-      fillWorkspaceFilter(snap.chats);
+      fillWorkspaceFilter(body.chats);
     }
     function fillWorkspaceFilter(chats) {
       const cur = wsFilterEl.value;
@@ -671,6 +720,14 @@
     window.crAgent = {
       on: (e, fn) => agentBus.on(e, fn)
     };
+    void fetch("/api/db").then((r) => r.json()).then((d) => {
+      if (dbPathEl && d.path) {
+        const short = d.path.split("/").slice(-3).join("/");
+        dbPathEl.textContent = short;
+        dbPathEl.title = d.path;
+      }
+    }).catch(() => {
+    });
     scheduler.start();
     void loadList().catch(onListError);
   }

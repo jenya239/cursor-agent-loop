@@ -52,7 +52,6 @@ export function reduceUi(state: UiState, action: UiAction): UiState {
         snapshot: action.snap,
         agent: action.snap.agent,
         agentBusy: action.snap.agent.busy,
-        chats: action.snap.chats.length ? action.snap.chats : state.chats,
         lastAgentEvent: action.agentEvent ?? state.lastAgentEvent,
       };
     case 'CHAT_LOADED': {

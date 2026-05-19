@@ -1,0 +1,5 @@
+{
+  "composerIds": [{ "id": "00000000-0000", "tag": "DIV", "cls": "composer-tab" }],
+  "history": [{ "label": "Example chat", "tag": "LI" }],
+  "selectors": ["composer-bar", "composer-pane"]
+}

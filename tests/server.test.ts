@@ -61,27 +61,30 @@ describe('HTTP API', () => {
     expect(res.status).toBe(404);
   });
 
-  it('GET /api/cdp/agent returns 410', async () => {
-    const app = createApp(store, { cdp: CursorMock.port('busy') });
-    const res = await request(app).get('/api/cdp/agent');
-    expect(res.status).toBe(410);
-    expect(res.body.use).toBe('/api/cursor/snapshot');
-  });
-
-  it('GET /api/cursor/snapshot', async () => {
+  it('GET /api/cursor/snapshot without chats by default', async () => {
     const app = createApp(store, noCdp);
     const res = await request(app).get(`/api/cursor/snapshot?composerId=${BUSY_COMPOSER_ID}`);
     expect(res.status).toBe(200);
-    expect(res.body.chats.length).toBeGreaterThan(0);
+    expect(res.body.chats).toBeUndefined();
     expect(res.body.agent.busy).toBe(true);
     expect(res.body.cdp.ok).toBe(true);
     expect(res.body.switch).toBeDefined();
   });
 
-  it('GET /api/agent returns 410', async () => {
+  it('GET /api/cursor/snapshot includeChats=1', async () => {
     const app = createApp(store, noCdp);
-    const res = await request(app).get(`/api/agent?composerId=${BUSY_COMPOSER_ID}`);
-    expect(res.status).toBe(410);
+    const res = await request(app).get(
+      `/api/cursor/snapshot?composerId=${BUSY_COMPOSER_ID}&includeChats=1`
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.chats.length).toBeGreaterThan(0);
+  });
+
+  it('GET /api/db', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app).get('/api/db');
+    expect(res.status).toBe(200);
+    expect(res.body.path).toContain('.vscdb');
   });
 
   it('POST /api/send validates text', async () => {

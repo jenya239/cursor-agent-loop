@@ -41,18 +41,43 @@ export function createApp(
   app.get('/api/cursor/snapshot', async (req, res) => {
     const composerId =
       typeof req.query.composerId === 'string' ? req.query.composerId : undefined;
-    res.json(await cursor.snapshot(composerId));
+    const includeChats =
+      req.query.includeChats === '1' || req.query.includeChats === 'true';
+    res.json(await cursor.snapshot(composerId, { includeChats }));
   });
 
-  const legacyGone = (_req: express.Request, res: express.Response) => {
-    res
-      .status(410)
-      .set('Link', '</api/cursor/snapshot>; rel="alternate"')
-      .json({ error: 'gone', use: '/api/cursor/snapshot' });
-  };
+  app.get('/api/db', (_req, res) => {
+    const candidates = (process.env.CURSOR_DB_CANDIDATES || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    res.json({ path: store.dbPath, candidates });
+  });
 
-  app.get('/api/cdp/agent', legacyGone);
-  app.get('/api/agent', legacyGone);
+  const sseMs = Number(process.env.SNAPSHOT_SSE_MS) || 800;
+  app.get('/api/cursor/events', async (req, res) => {
+    const composerId =
+      typeof req.query.composerId === 'string' ? req.query.composerId : undefined;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    let closed = false;
+    req.on('close', () => {
+      closed = true;
+    });
+    const push = async () => {
+      if (closed) return;
+      try {
+        const snap = await cursor.snapshot(composerId);
+        res.write(`data: ${JSON.stringify(snap)}\n\n`);
+      } catch {
+        /* skip tick */
+      }
+      if (!closed) setTimeout(push, sseMs);
+    };
+    void push();
+  });
 
   let sendBusy = false;
   let lastServerSend = { text: '', at: 0 };

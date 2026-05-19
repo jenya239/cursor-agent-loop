@@ -26,7 +26,8 @@ export interface CursorSnapshot {
   cdp: { ok: boolean };
   windows: CursorWindow[];
   composerByWindow: ComposerUiState[];
-  chats: ChatSummary[];
+  /** Present only when snapshot requested with includeChats=1 */
+  chats?: ChatSummary[];
   agent: AgentState;
   switch: ComposerSwitchResult | null;
 }

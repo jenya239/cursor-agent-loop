@@ -4,6 +4,7 @@ import { applyAgentPoll } from '../../agent-session';
 import type { CrStore } from '../state/store';
 import { agentTransition, shouldRefreshChat } from './refresh-policy';
 import { chatSignature } from '../views/chat-sig';
+import { openSnapshotStream, type SnapshotStream } from './snapshot-stream';
 
 export const POLL_MS = 800;
 
@@ -20,7 +21,9 @@ export const defaultClock: SchedulerClock = {
 
 export class PollScheduler {
   private stop?: () => void;
+  private stream?: SnapshotStream;
   private prevAgentBusy = false;
+  private usePoll = false;
 
   constructor(
     private readonly api: CrApi,
@@ -29,7 +32,23 @@ export class PollScheduler {
   ) {}
 
   start(): void {
-    this.stop?.();
+    this.halt();
+    if (!this.usePoll && typeof EventSource !== 'undefined') {
+      const id = this.store.get().activeComposerId;
+      this.stream = openSnapshotStream(
+        id,
+        (snap, ev) => this.applySnapshot(snap, ev),
+        () => {
+          this.usePoll = true;
+          this.startPoll();
+        }
+      );
+      return;
+    }
+    this.startPoll();
+  }
+
+  private startPoll(): void {
     void this.tick();
     this.stop = this.clock.setInterval(() => void this.tick(), POLL_MS);
   }
@@ -37,6 +56,29 @@ export class PollScheduler {
   halt(): void {
     this.stop?.();
     this.stop = undefined;
+    this.stream?.close();
+    this.stream = undefined;
+  }
+
+  private applySnapshot(
+    snap: import('../../cursor/types').CursorSnapshot,
+    ev: 'agent:busy' | 'agent:idle' | null
+  ): void {
+    const state = this.store.get();
+    const id = state.activeComposerId;
+    this.store.dispatch({ type: 'SNAPSHOT', snap, agentEvent: ev });
+    if (id && ev) {
+      applyAgentPoll(this.prevAgentBusy, id, {
+        composerId: id,
+        agentBusy: snap.agent.busy,
+        agentStatus: snap.agent.dbStatus,
+        messageCount: state.messages.length,
+      });
+    }
+    this.prevAgentBusy = snap.agent.busy;
+    if (id && shouldRefreshChat({ prevAgent: state.agent, snap, force: false, afterSend: false })) {
+      void this.refreshChat(id, true, true);
+    }
   }
 
   async tick(): Promise<void> {
@@ -46,31 +88,7 @@ export class PollScheduler {
     try {
       const snap = await this.api.snapshot(id ?? undefined);
       const ev = prevAgent ? agentTransition(prevAgent, snap.agent) : null;
-      this.store.dispatch({ type: 'SNAPSHOT', snap, agentEvent: ev });
-      if (snap.chats.length) {
-        this.store.dispatch({
-          type: 'SET_CHATS',
-          chats: snap.chats,
-          partial: false,
-          loading: false,
-        });
-      }
-      if (id && ev) {
-        applyAgentPoll(this.prevAgentBusy, id, {
-          composerId: id,
-          agentBusy: snap.agent.busy,
-          agentStatus: snap.agent.dbStatus,
-          messageCount: state.messages.length,
-        });
-      }
-      this.prevAgentBusy = snap.agent.busy;
-
-      if (
-        id &&
-        shouldRefreshChat({ prevAgent, snap, force: false, afterSend: false })
-      ) {
-        await this.refreshChat(id, true, true);
-      }
+      this.applySnapshot(snap, ev);
     } catch {
       /* ignore poll errors */
     }

@@ -26,7 +26,9 @@ describe('CursorModel', () => {
     const s = await m.snapshot(BUSY_COMPOSER_ID);
     expect(s.agent.busy).toBe(true);
     expect(s.cdp.ok).toBe(true);
-    expect(s.chats.length).toBeGreaterThan(0);
+    expect(s.chats).toBeUndefined();
+    const full = await m.snapshot(BUSY_COMPOSER_ID, { includeChats: true });
+    expect(full.chats!.length).toBeGreaterThan(0);
     expect(s.switch?.ok).toBe(true);
   });
 

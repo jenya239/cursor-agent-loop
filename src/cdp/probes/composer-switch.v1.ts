@@ -29,9 +29,14 @@ export function buildComposerSwitchJs(composerId: string, chatName?: string): st
         if (click(el)) return { ok: true, reason: 'partial-id' };
       }
     }
+    const tab = document.querySelector('[aria-selected="true"][data-composer-id], .tab.active[data-composer-id]');
+    if (tab) {
+      const v = tab.getAttribute('data-composer-id') || tab.getAttribute('data-id') || '';
+      if (v === id || v.startsWith(short)) return { ok: true, reason: 'active-tab' };
+    }
     if (chatName) {
       const hist = document.querySelectorAll(
-        '.composer-history-item, [class*="composer"] [role="option"], [class*="history"] a, [class*="history"] [role="listitem"], [class*="chat-history"] *'
+        '.composer-history-item, [class*="ComposerHistory"] *, [class*="composer"] [role="option"], [class*="history"] a, [class*="history"] [role="listitem"], [class*="chat-history"] *, li[role="treeitem"]'
       );
       for (const el of hist) {
         const t = (el.getAttribute('aria-label') || el.textContent || '').trim();

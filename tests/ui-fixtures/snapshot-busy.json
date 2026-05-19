@@ -21,7 +21,6 @@
       }
     }
   ],
-  "chats": [],
   "agent": {
     "phase": "busy",
     "busy": true,

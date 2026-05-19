@@ -17,8 +17,10 @@ async function json<T>(res: Response): Promise<T> {
 
 export class LiveApi implements CrApi {
   async snapshot(composerId?: string): Promise<CursorSnapshot> {
-    const q = composerId ? `?composerId=${encodeURIComponent(composerId)}` : '';
-    return json(await fetch(`/api/cursor/snapshot${q}`));
+    const params = new URLSearchParams();
+    if (composerId) params.set('composerId', composerId);
+    const q = params.toString();
+    return json(await fetch(`/api/cursor/snapshot${q ? `?${q}` : ''}`));
   }
 
   async chat(composerId: string, fresh = false): Promise<ChatDetailResponse> {

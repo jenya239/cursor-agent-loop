@@ -59,7 +59,10 @@ export class CursorModel {
     return result;
   }
 
-  async snapshot(composerId?: string): Promise<CursorSnapshot> {
+  async snapshot(
+    composerId?: string,
+    opts?: { includeChats?: boolean }
+  ): Promise<CursorSnapshot> {
     const cdpOk = await this.cdp.isAvailable();
     let windows: CursorWindow[] = [];
     let composerByWindow: ComposerUiState[] = [];
@@ -85,20 +88,22 @@ export class CursorModel {
         /* leave empty */
       }
     }
-    const { chats } = this.store.getChats();
     const agent = composerId
       ? await this.agent.forComposer(composerId)
       : await this.agent.forCdp();
     const sw = composerId && cdpOk ? await this.resolveSwitch(composerId) : null;
-    return {
+    const snap: CursorSnapshot = {
       at: Date.now(),
       cdp: { ok: cdpOk },
       windows,
       composerByWindow,
-      chats,
       agent,
       switch: sw,
     };
+    if (opts?.includeChats) {
+      snap.chats = this.store.getChats().chats;
+    }
+    return snap;
   }
 
   async chat(composerId: string, fresh = false): Promise<ChatDetailView | null> {

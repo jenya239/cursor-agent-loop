@@ -38,7 +38,7 @@ export class ChatStore {
 
   constructor(
     readonly reader: CursorDbReader,
-    dbPath: string,
+    readonly dbPath: string,
     private readonly fullScan: boolean
   ) {
     this.msgTtlMs = Number(process.env.MSG_CACHE_TTL_MS) || 800;

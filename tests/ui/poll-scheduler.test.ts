@@ -11,5 +11,6 @@ describe('PollScheduler', () => {
     });
     await scheduler.tick();
     expect(store.get().snapshot?.cdp.ok).toBe(true);
+    expect(store.get().snapshot?.chats).toBeUndefined();
   });
 });

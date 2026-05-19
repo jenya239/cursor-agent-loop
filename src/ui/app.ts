@@ -35,6 +35,7 @@ export function boot(): void {
   const agentIndicatorEl = document.getElementById('agent-indicator')!;
   const agentPanelEl = document.getElementById('agent-panel')!;
   const embedWarn = document.getElementById('embed-warn');
+  const dbPathEl = document.getElementById('db-path');
 
   let lastSendAt = 0;
   let lastSendText = '';
@@ -114,19 +115,18 @@ export function boot(): void {
   store.subscribe(render);
 
   async function loadList() {
-    const [snap, st] = await Promise.all([api.snapshot(), api.status()]);
-    store.dispatch({ type: 'SNAPSHOT', snap, agentEvent: null });
+    const [body, st] = await Promise.all([api.listChats(), api.status()]);
     store.dispatch({
       type: 'SET_CHATS',
-      chats: snap.chats,
-      partial: st.partial,
-      loading: st.loading,
+      chats: body.chats,
+      partial: body.partial || st.partial,
+      loading: body.loading || st.loading,
     });
     const s = store.get();
     const n = filterChats(s.chats, s.wsFilter).length;
-    const partial = st.partial ? ' ·~' : '';
+    const partial = body.partial || st.partial ? ' ·~' : '';
     const live = s.activeComposerId ? ' · live' : '';
-    if (st.loading) {
+    if (st.loading || body.loading) {
       store.dispatch({ type: 'STATUS', text: `${n}…`, loading: true });
       setTimeout(() => void loadList().catch(onListError), 1500);
     } else {
@@ -137,7 +137,7 @@ export function boot(): void {
         void openChat(saved);
       }
     }
-    fillWorkspaceFilter(snap.chats);
+    fillWorkspaceFilter(body.chats);
   }
 
   function fillWorkspaceFilter(chats: import('./api/types').ChatSummary[]) {
@@ -290,6 +290,17 @@ export function boot(): void {
   (window as Window & { crAgent?: { on: typeof agentBus.on } }).crAgent = {
     on: (e, fn) => agentBus.on(e, fn),
   };
+
+  void fetch('/api/db')
+    .then((r) => r.json())
+    .then((d: { path?: string }) => {
+      if (dbPathEl && d.path) {
+        const short = d.path.split('/').slice(-3).join('/');
+        dbPathEl.textContent = short;
+        dbPathEl.title = d.path;
+      }
+    })
+    .catch(() => {});
 
   scheduler.start();
   void loadList().catch(onListError);

@@ -1,4 +1,5 @@
 import { checkCdpAvailable, cdpBaseUrl, listTargets } from './client';
+import { switchViaQuickOpen } from './switch-quick-open';
 import { runComposerSend } from './composer-send';
 import { runProbeOnTargets } from './probes/registry';
 import { COMPOSER_AGENT_PROBE_ID, COMPOSER_SWITCH_PROBE_ID } from './port';
@@ -45,6 +46,10 @@ export class LiveCdp implements CdpPort {
         reason: hit.reason,
         switchTarget: hit.target ?? opts?.windowTitle,
       };
+    }
+    const query = opts?.chatName || composerId.slice(0, 8);
+    if (query.length >= 3) {
+      return switchViaQuickOpen(targets, query, opts?.windowTitle);
     }
     return { ok: false, reason: rows[0]?.reason || 'no-element' };
   }
