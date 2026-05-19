@@ -6,7 +6,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
-    "test": "jest"
+    "test": "jest",
+    "fixture:record": "tsx scripts/fixture-record.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.9.0",
