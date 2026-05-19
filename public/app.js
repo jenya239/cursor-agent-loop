@@ -5,35 +5,56 @@ const refreshBtn = document.getElementById('refresh');
 const wsFilterEl = document.getElementById('ws-filter');
 const composeInput = document.getElementById('compose-input');
 const composeSend = document.getElementById('compose-send');
+const agentIndicatorEl = document.getElementById('agent-indicator');
 let activeId = null;
 let sending = false;
 let lastSendAt = 0;
 let lastSendText = '';
-const SEND_COOLDOWN_MS = 2500;
+const SEND_COOLDOWN_MS = 8000;
+const embeddedInCursor = (() => {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+})();
 let listPollTimer = null;
 let chatPollTimer = null;
 let lastChatSig = '';
 let allChats = [];
+let cdpAgentBusy = false;
+let lastDbAgentBusy = false;
+let cdpPollTimer = null;
 
 const CHAT_POLL_MS = 1000;
+const CDP_AGENT_POLL_MS = 800;
 
 refreshBtn.addEventListener('click', () => refreshServer());
 wsFilterEl.addEventListener('change', () => renderList(filterChats(allChats)));
 
 function setComposeEnabled(on) {
+  if (embeddedInCursor) return;
   composeInput.disabled = !on || sending;
   composeSend.disabled = !on || sending;
 }
 
-composeSend.addEventListener('click', () => submitCompose());
-
-composeInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    e.stopPropagation();
-    submitCompose();
-  }
-});
+if (embeddedInCursor) {
+  const warn = document.getElementById('embed-warn');
+  if (warn) warn.hidden = false;
+  composeInput.disabled = true;
+  composeSend.disabled = true;
+  composeInput.placeholder = 'Только из внешнего браузера';
+  setStatus('открой 127.0.0.1:3847 в Firefox/Chrome', false);
+} else {
+  composeSend.addEventListener('click', () => submitCompose());
+  composeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      submitCompose();
+    }
+  });
+}
 
 window.addEventListener(
   'keydown',
@@ -47,10 +68,19 @@ window.addEventListener(
 );
 
 async function submitCompose() {
+  if (embeddedInCursor) return;
   const text = composeInput.value.trim();
-  if (!text || !activeId || sending) return;
+  if (!text) return;
+  if (!activeId) {
+    setStatus('выберите чат в списке', false);
+    return;
+  }
+  if (sending) return;
   const now = Date.now();
-  if (text === lastSendText && now - lastSendAt < SEND_COOLDOWN_MS) return;
+  if (text === lastSendText && now - lastSendAt < SEND_COOLDOWN_MS) {
+    setStatus('подождите перед повтором', false);
+    return;
+  }
   if (now - lastSendAt < 800) return;
 
   const draft = text;
@@ -72,8 +102,10 @@ async function submitCompose() {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || res.statusText);
-    await loadChat(activeId, { silent: true, force: true, pinBottom: true });
-    setStatus(prevStatus, false);
+    const where = body.pageTitle ? ` → ${body.pageTitle}` : '';
+    setStatus(`отправлено${where}`, false);
+    loadChat(activeId, { silent: true, force: true, pinBottom: true }).catch(() => {});
+    setTimeout(() => setStatus(prevStatus, false), 1500);
   } catch (e) {
     composeInput.value = draft;
     setStatus('Ошибка: ' + e.message, false);
@@ -88,6 +120,67 @@ async function submitCompose() {
 function setStatus(text, loading) {
   statusEl.textContent = text;
   statusEl.classList.toggle('loading', !!loading);
+}
+
+function renderAgentIndicator(busy, source) {
+  agentIndicatorEl.classList.toggle('busy', busy);
+  agentIndicatorEl.classList.toggle('idle', !busy);
+  agentIndicatorEl.textContent = busy ? 'AGENT · работает' : 'AGENT · ждёт';
+  agentIndicatorEl.title = busy
+    ? `Агент работает (${source || '?'})`
+    : 'Агент в активном чате Cursor не работает';
+}
+
+function mergeAgentBusy(chat) {
+  const db = !!chat.agentBusyDb || !!chat.agentBusy;
+  const cdp = cdpAgentBusy;
+  const busy = db || cdp;
+  const source = busy ? (cdp && db ? 'cdp+db' : cdp ? 'cdp' : 'db') : '';
+  return { ...chat, agentBusy: busy, agentSource: source };
+}
+
+function syncAgentUi(chat) {
+  const merged = mergeAgentBusy(chat);
+  const { busy, event } = window.crAgent.sync(merged, activeId);
+  renderAgentIndicator(busy, merged.agentSource);
+  if (event === 'agent:idle') {
+    const n = chat.messages?.length ?? 0;
+    setStatus(`готово · ${n} msg`, false);
+  }
+  return { busy, event };
+}
+
+async function pollCdpAgent() {
+  try {
+    const res = await fetch('/api/cdp/agent');
+    const body = await res.json();
+    if (!body.ok) return;
+    const next = !!body.busy;
+    if (next === cdpAgentBusy) return;
+    cdpAgentBusy = next;
+    if (activeId) {
+      syncAgentUi({
+        composerId: activeId,
+        agentBusyDb: lastDbAgentBusy,
+        messages: [],
+      });
+    } else {
+      renderAgentIndicator(cdpAgentBusy, 'cdp');
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function startCdpAgentPoll() {
+  stopCdpAgentPoll();
+  pollCdpAgent();
+  cdpPollTimer = setInterval(pollCdpAgent, CDP_AGENT_POLL_MS);
+}
+
+function stopCdpAgentPoll() {
+  if (cdpPollTimer) clearInterval(cdpPollTimer);
+  cdpPollTimer = null;
 }
 
 function filterChats(chats) {
@@ -214,10 +307,11 @@ function stopChatPoll() {
 }
 
 function chatSignature(data) {
+  const busy = data.agentBusy ? 'b' : 'i';
   const msgs = data.messages || [];
-  if (!msgs.length) return '0';
+  if (!msgs.length) return `${busy}:0`;
   const last = msgs[msgs.length - 1];
-  return `${msgs.length}:${last.bubbleId}:${(last.text || '').length}`;
+  return `${busy}:${msgs.length}:${last.bubbleId}:${(last.text || '').length}`;
 }
 
 function chatAtBottom(threshold = 80) {
@@ -248,6 +342,9 @@ function renderChat(data, pinBottom) {
       ? `<span class="chat-ws">${esc(data.workspaceLabel)}</span> `
       : '';
   const title = esc(data.name || '—');
+  const busy = data.agentBusy
+    ? '<span class="agent-busy" title="агент работает">AGENT</span> '
+    : '';
   const tag = (m) => {
     if (m.role === 'user') return 'u';
     return (m.text || '').startsWith('[') ? 't' : 'a';
@@ -258,7 +355,7 @@ function renderChat(data, pinBottom) {
         `<article class="msg ${m.role}${(m.text || '').startsWith('[') ? ' tool' : ''}"><span class="tag">${tag(m)}</span><pre>${esc(m.text || '')}</pre></article>`
     )
     .join('');
-  chatEl.innerHTML = `<div class="chat-hdr">${ws}${title} <span class="msg-count">${(data.messages || []).length}</span></div>${body || '<p class="hint">пусто</p>'}<div id="chat-end" aria-hidden="true"></div>`;
+  chatEl.innerHTML = `<div class="chat-hdr">${ws}${title} ${busy}<span class="msg-count">${(data.messages || []).length}</span></div>${body || '<p class="hint">пусто</p>'}<div id="chat-end" aria-hidden="true"></div>`;
 
   if (pinBottom) scrollChatBottom();
 }
@@ -271,10 +368,14 @@ async function loadChat(id, opts = {}) {
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
 
+  data.composerId = data.composerId || id;
+  lastDbAgentBusy = !!data.agentBusyDb;
+  syncAgentUi(data);
+
   const sig = chatSignature(data);
   if (!force && sig === lastChatSig) return data;
   lastChatSig = sig;
-  const pinBottom = pin ?? (!silent || chatAtBottom());
+  const pinBottom = pin ?? (!silent || chatAtBottom() || data.agentBusy);
   renderChat(data, pinBottom);
   return data;
 }
@@ -297,6 +398,9 @@ async function openChat(id) {
   stopChatPoll();
   activeId = id;
   lastChatSig = '';
+  window.crAgent.reset();
+  cdpAgentBusy = false;
+  renderAgentIndicator(false, '');
   setComposeEnabled(true);
 
   try {
@@ -319,4 +423,5 @@ function esc(s) {
 
 setStatus('Загрузка…', true);
 refreshBtn.disabled = true;
+startCdpAgentPoll();
 loadList().catch(onListError);

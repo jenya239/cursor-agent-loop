@@ -3,28 +3,49 @@ import {
   connectCdp,
   cdpBaseUrl,
   listTargets,
-  pickWorkbenchPage,
+  pickWorkbenchWithComposer,
 } from './client';
 
-const INPUT_SELECTORS = [
-  ".composer-bar [contenteditable='true']",
-  "#workbench\\.parts\\.auxiliarybar [contenteditable='true']",
-  "div.composer-bar.editor [contenteditable='true']",
-  "[contenteditable='true']",
-];
-
 const FIND_INPUT_JS = `(() => {
-  const sels = ${JSON.stringify(INPUT_SELECTORS)};
-  for (const sel of sels) {
-    const el = document.querySelector(sel);
-    if (!el) continue;
-    el.scrollIntoView({ block: 'nearest' });
-    el.focus();
-    el.click();
-    const r = el.getBoundingClientRect();
-    return { ok: true, sel, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  const bar = document.querySelector('.composer-bar');
+  if (!bar) return { ok: false, reason: 'no-bar' };
+  const el = bar.querySelector("[contenteditable='true'], [contenteditable=true]");
+  if (!el) return { ok: false, reason: 'no-input' };
+  el.scrollIntoView({ block: 'nearest' });
+  el.focus();
+  el.click();
+  const r = el.getBoundingClientRect();
+  const active = document.activeElement;
+  return {
+    ok: true,
+    sel: '.composer-bar [contenteditable]',
+    x: r.left + r.width / 2,
+    y: r.top + r.height / 2,
+    inBar: active ? bar.contains(active) : false,
+    inputCls: (el.className || '').toString().slice(0, 60),
+  };
+})()`;
+
+const SUBMIT_JS = `(() => {
+  const bar = document.querySelector('.composer-bar');
+  if (!bar) return { ok: false, reason: 'no-bar' };
+  if (bar.querySelector('.codicon-debug-stop')) {
+    return { ok: false, reason: 'agent-running' };
   }
-  return { ok: false };
+  for (const btn of bar.querySelectorAll('.anysphere-icon-button, button, [role="button"]')) {
+    if (btn.querySelector('.codicon-arrow-up')) {
+      btn.click();
+      return { ok: true, how: 'arrow-up' };
+    }
+  }
+  const legacy =
+    bar.querySelector('button.composer-send-button:not([disabled])') ||
+    bar.querySelector('[data-testid="composer-send-button"]:not([disabled])');
+  if (legacy) {
+    legacy.click();
+    return { ok: true, how: 'legacy-btn' };
+  }
+  return { ok: false, reason: 'no-send-btn' };
 })()`;
 
 export interface SendResult {
@@ -32,6 +53,8 @@ export interface SendResult {
   text: string;
   selector: string;
   pageTitle: string;
+  inBar?: boolean;
+  submitHow?: string;
 }
 
 export async function sendComposerMessage(text: string): Promise<SendResult> {
@@ -44,8 +67,8 @@ export async function sendComposerMessage(text: string): Promise<SendResult> {
   }
 
   const targets = await listTargets(base);
-  const page = pickWorkbenchPage(targets);
-  if (!page) throw new Error('no Cursor workbench page');
+  const page = await pickWorkbenchWithComposer(targets);
+  if (!page) throw new Error('no Cursor window with composer');
 
   const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
   try {
@@ -54,10 +77,26 @@ export async function sendComposerMessage(text: string): Promise<SendResult> {
     const found = (await send('Runtime.evaluate', {
       expression: FIND_INPUT_JS,
       returnByValue: true,
-    })) as { result?: { value?: { ok: boolean; sel?: string; x: number; y: number } } };
+    })) as {
+      result?: {
+        value?: {
+          ok: boolean;
+          reason?: string;
+          sel?: string;
+          x: number;
+          y: number;
+          inBar?: boolean;
+        };
+      };
+    };
 
     const info = found?.result?.value;
-    if (!info?.ok || info.sel == null) throw new Error('composer input not found');
+    if (!info?.ok || info.sel == null) {
+      throw new Error(`composer ${info?.reason || 'input not found'}`);
+    }
+    if (info.inBar === false) {
+      throw new Error('focus not in composer-bar');
+    }
 
     await send('Input.dispatchMouseEvent', {
       type: 'mousePressed',
@@ -104,38 +143,47 @@ export async function sendComposerMessage(text: string): Promise<SendResult> {
 
     await send('Input.insertText', { text: trimmed });
 
-    const submitted = (await send('Runtime.evaluate', {
-      expression: `(() => {
-        const bar = document.querySelector('.composer-bar');
-        if (!bar) return false;
-        const btn =
-          bar.querySelector('button.composer-send-button') ||
-          bar.querySelector('[data-testid="composer-send-button"]') ||
-          [...bar.querySelectorAll('button')].find((b) =>
-            /send|отправ/i.test(b.getAttribute('aria-label') || b.textContent || '')
-          );
-        if (btn) { btn.click(); return true; }
-        return false;
-      })()`,
+    let submitted = (await send('Runtime.evaluate', {
+      expression: SUBMIT_JS,
       returnByValue: true,
-    })) as { result?: { value?: boolean } };
+    })) as { result?: { value?: { ok?: boolean; reason?: string; how?: string } } };
 
-    if (!submitted?.result?.value) {
+    let sub = submitted?.result?.value;
+    if (!sub?.ok && sub?.reason === 'no-send-btn') {
+      const enterMod = process.platform === 'darwin' ? 8 : 2;
       await send('Input.dispatchKeyEvent', {
-        type: 'rawKeyDown',
+        type: 'keyDown',
         key: 'Enter',
         code: 'Enter',
         windowsVirtualKeyCode: 13,
+        modifiers: enterMod,
       });
       await send('Input.dispatchKeyEvent', {
         type: 'keyUp',
         key: 'Enter',
         code: 'Enter',
         windowsVirtualKeyCode: 13,
+        modifiers: enterMod,
       });
+      sub = { ok: true, how: 'mod-enter' };
     }
 
-    return { ok: true, text: trimmed, selector: info.sel, pageTitle: page.title };
+    if (!sub?.ok) {
+      const why = sub?.reason || 'submit failed';
+      if (why === 'agent-running') {
+        throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
+      }
+      throw new Error(`composer ${why}`);
+    }
+
+    return {
+      ok: true,
+      text: trimmed,
+      selector: info.sel,
+      pageTitle: page.title,
+      inBar: info.inBar,
+      submitHow: sub.how,
+    };
   } finally {
     close();
   }

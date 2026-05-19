@@ -2,7 +2,9 @@ import request from 'supertest';
 import { CursorDbReader } from '../src/db/reader';
 import { createApp } from '../src/server';
 import { ChatStore } from '../src/chat-store';
-import { createTestDb, removeTestDb, COMPOSER_ID } from './fixture';
+import { createTestDb, removeTestDb, COMPOSER_ID, BUSY_COMPOSER_ID } from './fixture';
+
+const noCdp = { getCdpAgentBusy: async () => false };
 
 describe('HTTP API', () => {
   let dbPath: string;
@@ -22,7 +24,7 @@ describe('HTTP API', () => {
   });
 
   it('GET /api/status', async () => {
-    const app = createApp(store);
+    const app = createApp(store, noCdp);
     const res = await request(app).get('/api/status');
     expect(res.status).toBe(200);
     expect(res.body.ready).toBe(true);
@@ -37,21 +39,36 @@ describe('HTTP API', () => {
   });
 
   it('GET /api/chats/:id', async () => {
-    const app = createApp(store);
+    const app = createApp(store, noCdp);
     const res = await request(app).get(`/api/chats/${COMPOSER_ID}`);
     expect(res.status).toBe(200);
     expect(res.body.messages).toHaveLength(2);
     expect(res.body.messages[0].text).toBe('Hello');
+    expect(res.body.agentBusy).toBe(false);
+  });
+
+  it('GET /api/chats/:id reports agentBusy', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app).get(`/api/chats/${BUSY_COMPOSER_ID}`);
+    expect(res.status).toBe(200);
+    expect(res.body.agentBusy).toBe(true);
   });
 
   it('GET /api/chats/:id 404', async () => {
-    const app = createApp(store);
+    const app = createApp(store, noCdp);
     const res = await request(app).get('/api/chats/00000000-0000-0000-0000-000000000000');
     expect(res.status).toBe(404);
   });
 
+  it('GET /api/cdp/agent', async () => {
+    const app = createApp(store, { getCdpAgentBusy: async () => true });
+    const res = await request(app).get('/api/cdp/agent');
+    expect(res.status).toBe(200);
+    expect(res.body.busy).toBe(true);
+  });
+
   it('POST /api/send validates text', async () => {
-    const app = createApp(store, { send: async (t) => ({ ok: true, text: t }) });
+    const app = createApp(store, { ...noCdp, send: async (t) => ({ ok: true, text: t }) });
     const bad = await request(app).post('/api/send').send({ text: '  ' });
     expect(bad.status).toBe(400);
     const ok = await request(app).post('/api/send').send({ text: 'hi' });

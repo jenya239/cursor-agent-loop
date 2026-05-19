@@ -10,8 +10,10 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <div id="embed-warn" class="embed-warn" hidden>Откройте cr во внешнем браузере — во вкладке Cursor отправка зацикливается.</div>
   <header id="bar">
     <select id="ws-filter" title="workspace"><option value="">все</option></select>
+    <span id="agent-indicator" class="agent-indicator idle" title="Агент в активном чате Cursor">AGENT · ждёт</span>
     <span id="status">…</span>
     <button type="button" id="refresh" disabled title="Обновить">↻</button>
   </header>
@@ -25,6 +27,7 @@
       </div>
     </section>
   </div>
+  <script src="/agent.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

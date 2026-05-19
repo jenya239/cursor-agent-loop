@@ -4,13 +4,16 @@ import { CursorDbReader } from './db/reader';
 import { globalDbPath } from './db/paths';
 import { ChatStore } from './chat-store';
 import { checkCdpAvailable, cdpBaseUrl } from './cdp/client';
+import { readComposerAgentBusy } from './cdp/agent-ui';
 import { sendComposerMessage } from './cdp/send';
 
 export type SendHandler = (text: string) => Promise<{ ok: true; text: string }>;
 
+export type CdpAgentBusyFn = () => Promise<boolean>;
+
 export function createApp(
   store: ChatStore,
-  opts?: { send?: SendHandler }
+  opts?: { send?: SendHandler; getCdpAgentBusy?: CdpAgentBusyFn }
 ): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
@@ -18,6 +21,7 @@ export function createApp(
     const r = await sendComposerMessage(text);
     return { ok: true, text: r.text };
   });
+  const getCdpAgentBusy = opts?.getCdpAgentBusy ?? readComposerAgentBusy;
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
@@ -26,6 +30,16 @@ export function createApp(
   app.get('/api/cdp/status', async (_req, res) => {
     const url = cdpBaseUrl();
     res.json({ ok: await checkCdpAvailable(url), url });
+  });
+
+  app.get('/api/cdp/agent', async (_req, res) => {
+    try {
+      const busy = await getCdpAgentBusy();
+      res.json({ ok: true, busy });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.json({ ok: false, busy: false, error: msg });
+    }
   });
 
   let sendBusy = false;
@@ -43,7 +57,7 @@ export function createApp(
       res.status(429).json({ error: 'send in progress' });
       return;
     }
-    if (trimmed === lastServerSend.text && now - lastServerSend.at < 2500) {
+    if (trimmed === lastServerSend.text && now - lastServerSend.at < 8000) {
       res.status(429).json({ error: 'duplicate send' });
       return;
     }
@@ -56,7 +70,9 @@ export function createApp(
       const msg = e instanceof Error ? e.message : String(e);
       res.status(502).json({ error: msg });
     } finally {
-      sendBusy = false;
+      setTimeout(() => {
+        sendBusy = false;
+      }, 1200);
     }
   });
 
@@ -115,8 +131,15 @@ export function createApp(
       return;
     }
     const fresh = req.query.fresh === '1';
-    const { summary, messages } = store.getChat(composerId, fresh);
-    res.json({ ...summary, composerId, messages });
+    const { summary, messages, agentBusy, agentStatus } = store.getChat(composerId, fresh);
+    res.json({
+      ...summary,
+      composerId,
+      messages,
+      agentBusy,
+      agentBusyDb: agentBusy,
+      agentStatus,
+    });
   });
 
   app.use(express.static(path.join(__dirname, '..', 'public')));

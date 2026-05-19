@@ -27,6 +27,10 @@ export interface ComposerData {
   createdAt?: number;
   lastUpdatedAt?: number;
   unifiedMode?: string;
+  status?: string;
+  generatingBubbleIds?: string[];
+  isContinuationInProgress?: boolean;
+  queueItems?: unknown[];
   fullConversationHeadersOnly?: ConversationHeader[];
   conversationMap?: Record<string, BubblePayload>;
 }

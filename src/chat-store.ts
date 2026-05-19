@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { readCacheFile, writeCacheFile } from './cache';
 import type { CursorDbReader } from './db/reader';
+import { isAgentBusy } from './db/agent-state';
 import type { ChatMessage, ChatSummary } from './db/types';
 
 const CHATS_CACHE_VERSION = 3;
@@ -118,15 +119,29 @@ export class ChatStore {
     this.partial = partial;
   }
 
-  getChat(composerId: string, fresh = false): { summary: ChatSummary | undefined; messages: ChatMessage[] } {
+  getChat(composerId: string, fresh = false): {
+    summary: ChatSummary | undefined;
+    messages: ChatMessage[];
+    agentBusy: boolean;
+    agentStatus?: string;
+  } {
+    const data = this.reader.getComposerData(composerId);
+    const agentBusy = isAgentBusy(data);
+    const agentStatus = data?.status;
     const summary = this.chats.find((c) => c.composerId === composerId);
     const hit = this.messagesCache.get(composerId);
-    if (!fresh && hit && Date.now() - hit.at < this.msgTtlMs && !messagesStale(hit.messages)) {
-      return { summary, messages: hit.messages };
+    if (
+      !fresh &&
+      hit &&
+      Date.now() - hit.at < this.msgTtlMs &&
+      !messagesStale(hit.messages) &&
+      !agentBusy
+    ) {
+      return { summary, messages: hit.messages, agentBusy, agentStatus };
     }
     const messages = this.reader.getMessages(composerId);
     this.messagesCache.set(composerId, { at: Date.now(), messages });
-    return { summary, messages };
+    return { summary, messages, agentBusy, agentStatus };
   }
 }
 

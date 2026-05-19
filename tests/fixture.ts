@@ -5,8 +5,9 @@ import path from 'path';
 
 const COMPOSER_ID = '11111111-1111-1111-1111-111111111111';
 const COMPOSER_ID_2 = '22222222-2222-2222-2222-222222222222';
+const BUSY_COMPOSER_ID = '33333333-3333-3333-3333-333333333333';
 
-export { COMPOSER_ID, COMPOSER_ID_2 };
+export { COMPOSER_ID, COMPOSER_ID_2, BUSY_COMPOSER_ID };
 
 export function createTestDb(): string {
   const p = path.join(os.tmpdir(), `cr-test-${process.pid}-${Date.now()}.vscdb`);
@@ -41,6 +42,20 @@ export function createTestDb(): string {
   insertKv.run(
     `bubbleId:${COMPOSER_ID}:b2`,
     JSON.stringify({ text: 'Hi there', type: 2, createdAt: 1002 })
+  );
+
+  const busyComposer = {
+    composerId: BUSY_COMPOSER_ID,
+    name: 'Busy chat',
+    status: 'generating',
+    generatingBubbleIds: ['b1'],
+    fullConversationHeadersOnly: [{ bubbleId: 'b1', type: 1 }],
+    conversationMap: {},
+  };
+  insertKv.run(`composerData:${busyComposer.composerId}`, JSON.stringify(busyComposer));
+  insertKv.run(
+    `bubbleId:${busyComposer.composerId}:b1`,
+    JSON.stringify({ text: 'Wait', type: 1, createdAt: 3001 })
   );
 
   const legacyData = {

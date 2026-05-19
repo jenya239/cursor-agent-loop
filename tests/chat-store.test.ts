@@ -1,6 +1,6 @@
 import { ChatStore } from '../src/chat-store';
 import { CursorDbReader } from '../src/db/reader';
-import { createTestDb, removeTestDb, COMPOSER_ID } from './fixture';
+import { createTestDb, removeTestDb, COMPOSER_ID, BUSY_COMPOSER_ID } from './fixture';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -29,6 +29,19 @@ describe('ChatStore', () => {
     await store.refresh();
     expect(store.status().count).toBeGreaterThan(0);
     expect(store.getChats().chats.find((c) => c.composerId === COMPOSER_ID)).toBeTruthy();
+    reader.close();
+    removeTestDb(dbPath);
+  });
+
+  it('getChat exposes agentBusy', async () => {
+    const dbPath = createTestDb();
+    const reader = CursorDbReader.fromPath(dbPath);
+    const store = new ChatStore(reader, dbPath, true);
+    await store.refresh();
+    const idle = store.getChat(COMPOSER_ID, true);
+    const busy = store.getChat(BUSY_COMPOSER_ID, true);
+    expect(idle.agentBusy).toBe(false);
+    expect(busy.agentBusy).toBe(true);
     reader.close();
     removeTestDb(dbPath);
   });
