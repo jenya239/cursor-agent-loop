@@ -1,4 +1,5 @@
 {
   "busy": false,
-  "reason": "idle"
+  "reason": "idle",
+  "controls": [{ "role": "send", "label": "Send", "visible": true }]
 }

@@ -29,7 +29,7 @@ async function main() {
   write('targets.json', targets, outDir);
   write('composer-probes.json', probes, outDir);
   if (apply) {
-    fs.writeFileSync(path.join(outDir, 'targets.default.json'), `${JSON.stringify(targets, null, 2)}\n`);
+    write('targets.default.json', targets, outDir);
     const cr = probes.find((p) => /cr - cr - Cursor/i.test(p.title)) ?? probes[0];
     if (cr) {
       const v = { busy: cr.busy, reason: cr.reason };

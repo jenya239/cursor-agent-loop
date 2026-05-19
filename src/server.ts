@@ -139,14 +139,13 @@ export function createApp(
 
   app.get('/api/chats/:id', async (req, res) => {
     const composerId = req.params.id;
-    const data = store.reader.getComposerData(composerId);
-    if (!data) {
+    const fresh = req.query.fresh === '1';
+    const view = await cursor.chat(composerId, fresh);
+    if (!view) {
       res.status(404).json({ error: 'chat not found' });
       return;
     }
-    const fresh = req.query.fresh === '1';
-    const { summary, messages } = store.getChat(composerId, fresh);
-    const agent = await cursor.agentState(composerId);
+    const { agent, messages, summary } = view;
     res.json({
       ...summary,
       composerId,

@@ -11,6 +11,17 @@ describe('composer-agent probe', () => {
       busy: true,
       reason: 'stop-icon',
     });
+    expect(
+      parseComposerAgentProbeValue({
+        busy: false,
+        reason: 'idle',
+        controls: [{ role: 'send', label: 'Send', visible: true }],
+      })
+    ).toEqual({
+      busy: false,
+      reason: 'idle',
+      controls: [{ role: 'send', label: 'Send', visible: true }],
+    });
     expect(parseComposerAgentProbeValue(null)).toBeNull();
   });
 

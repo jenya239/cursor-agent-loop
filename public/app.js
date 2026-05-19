@@ -25,6 +25,7 @@ let chatPollTimer = null;
 let lastChatSig = '';
 let allChats = [];
 let lastAgentState = null;
+let lastSnapshot = null;
 let agentPollTimer = null;
 
 const CHAT_POLL_MS = 1000;
@@ -139,7 +140,7 @@ function loadLastChatId() {
   }
 }
 
-function renderAgentState(st) {
+function renderAgentState(st, snap) {
   if (!st) {
     agentPanelEl.textContent = 'агент · нет данных';
     agentPanelEl.dataset.phase = 'unknown';
@@ -156,7 +157,10 @@ function renderAgentState(st) {
     : 'CDP недоступен';
   const db = st.dbBusy ? `чат занят (${st.dbStatus || '?'})` : 'чат свободен';
   const win = st.cdpWindowTitle ? ` · ${st.cdpWindowTitle}` : '';
-  agentPanelEl.textContent = `агент · ${label} · ${cdp} · ${db}${win}`;
+  const n = snap?.windows?.length;
+  const busyN = snap?.composerByWindow?.filter((w) => w.probe?.busy).length ?? 0;
+  const cdpMeta = snap?.cdp?.ok && n ? ` · CDP ${n} окн${busyN ? `, ${busyN} занято` : ''}` : '';
+  agentPanelEl.textContent = `агент · ${label} · ${cdp} · ${db}${win}${cdpMeta}`;
   agentIndicatorEl.textContent = `AGENT · ${st.busy ? 'работает' : 'ждёт'}`;
   agentIndicatorEl.className = `agent-indicator ${st.busy ? 'busy' : 'idle'}`;
   agentIndicatorEl.title = agentPanelEl.textContent;
@@ -183,7 +187,7 @@ async function pollAgent() {
     const st = snap.agent;
     const prevBusy = lastAgentState?.busy;
     lastAgentState = st;
-    renderAgentState(st);
+    renderAgentState(st, snap);
     applyAgentEvents(st, prevBusy);
   } catch {
     /* ignore */

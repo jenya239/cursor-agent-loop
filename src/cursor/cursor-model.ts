@@ -64,9 +64,9 @@ export class CursorModel {
     };
   }
 
-  async chat(composerId: string): Promise<ChatDetailView | null> {
+  async chat(composerId: string, fresh = false): Promise<ChatDetailView | null> {
     if (!this.store.reader.getComposerData(composerId)) return null;
-    const { summary, messages } = this.store.getChat(composerId, true);
+    const { summary, messages } = this.store.getChat(composerId, fresh);
     const agent = await this.agent.forComposer(composerId);
     return {
       summary: summary ?? { composerId, name: 'Untitled' },

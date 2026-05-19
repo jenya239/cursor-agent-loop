@@ -1,4 +1,5 @@
 {
   "busy": true,
-  "reason": "stop-icon"
+  "reason": "stop-icon",
+  "controls": [{ "role": "stop", "label": "Stop", "visible": true }]
 }

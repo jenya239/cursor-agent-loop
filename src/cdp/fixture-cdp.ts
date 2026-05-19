@@ -2,7 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import type { CdpTarget } from './client';
 import type { ComposerAgentPageProbe } from './probes/composer-agent.v1';
-import { COMPOSER_AGENT_PROBE_ID } from './probes/composer-agent.v1';
+import {
+  COMPOSER_AGENT_PROBE_ID,
+  parseComposerAgentProbeValue,
+} from './probes/composer-agent.v1';
 import type { CdpPort, CdpProbeId } from './port';
 
 export type FixtureScenario = 'idle' | 'busy' | 'down';
@@ -32,14 +35,14 @@ export class FixtureCdp implements CdpPort {
       throw new Error(`unknown probe: ${probeId}`);
     }
     const targets = await this.listTargets();
-    const idle = loadJson<{ busy: boolean; reason: string }>('composer-idle.json');
-    const busy = loadJson<{ busy: boolean; reason: string }>('composer-busy.json');
+    const idle = loadJson('composer-idle.json');
+    const busy = loadJson('composer-busy.json');
 
     return targets.map((t) => {
       const useBusy =
         this.scenario === 'busy' && /cr - cr - Cursor/i.test(t.title || '');
-      const v = useBusy ? busy : idle;
-      return { title: t.title, busy: v.busy, reason: v.reason };
+      const v = parseComposerAgentProbeValue(useBusy ? busy : idle)!;
+      return { title: t.title, ...v };
     });
   }
 }
