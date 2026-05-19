@@ -1,0 +1,17 @@
+{
+  "composerId": "11111111-1111-1111-1111-111111111111",
+  "name": "Test chat",
+  "messages": [
+    { "role": "user", "text": "Hi", "bubbleId": "b1" },
+    { "role": "assistant", "text": "Hello", "bubbleId": "b2" }
+  ],
+  "agent": {
+    "phase": "idle",
+    "busy": false,
+    "dbBusy": false,
+    "cdpBusy": false,
+    "cdpOk": true,
+    "at": 1
+  },
+  "agentBusy": false
+}

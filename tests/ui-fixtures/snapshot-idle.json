@@ -1,0 +1,39 @@
+{
+  "at": 1,
+  "cdp": { "ok": true },
+  "windows": [
+    {
+      "id": "page-cr",
+      "title": "cr - cr - Cursor",
+      "type": "page",
+      "url": "workbench.html",
+      "hasComposer": true
+    }
+  ],
+  "composerByWindow": [
+    {
+      "windowTitle": "cr - cr - Cursor",
+      "probe": {
+        "title": "cr - cr - Cursor",
+        "busy": false,
+        "reason": "idle",
+        "controls": [{ "role": "send", "label": "Send", "visible": true }]
+      }
+    }
+  ],
+  "chats": [
+    {
+      "composerId": "11111111-1111-1111-1111-111111111111",
+      "name": "Test",
+      "workspaceLabel": "ws"
+    }
+  ],
+  "agent": {
+    "phase": "idle",
+    "busy": false,
+    "dbBusy": false,
+    "cdpBusy": false,
+    "cdpOk": true,
+    "at": 1
+  }
+}

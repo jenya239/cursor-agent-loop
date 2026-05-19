@@ -1,11 +1,9 @@
-import { checkCdpAvailable, cdpBaseUrl, composerPageOrder, connectCdp, listTargets } from './client';
-import {
-  COMPOSER_AGENT_PROBE_ID,
-  COMPOSER_AGENT_PROBE_JS,
-  parseComposerAgentProbeValue,
-} from './probes/composer-agent.v1';
+import { checkCdpAvailable, cdpBaseUrl, listTargets } from './client';
+import { runProbeOnTargets } from './probes/registry';
+import { COMPOSER_AGENT_PROBE_ID, COMPOSER_SWITCH_PROBE_ID } from './port';
 import type { ComposerAgentPageProbe } from './probes/composer-agent.v1';
-import type { CdpPort, CdpProbeId } from './port';
+import type { CdpPort, CdpSendResult } from './port';
+import { sendComposerMessage } from './send';
 
 export class LiveCdp implements CdpPort {
   constructor(private readonly base = cdpBaseUrl()) {}
@@ -18,31 +16,38 @@ export class LiveCdp implements CdpPort {
     return listTargets(this.base);
   }
 
-  async runProbe(probeId: CdpProbeId): Promise<ComposerAgentPageProbe[]> {
-    if (probeId !== COMPOSER_AGENT_PROBE_ID) {
-      throw new Error(`unknown probe: ${probeId}`);
+  async runProbe(probeId: typeof COMPOSER_AGENT_PROBE_ID): Promise<ComposerAgentPageProbe[]> {
+    const targets = await this.listTargets();
+    return runProbeOnTargets(probeId, targets) as Promise<ComposerAgentPageProbe[]>;
+  }
+
+  async switchComposer(
+    composerId: string,
+    opts?: { windowTitle?: string }
+  ): Promise<{ ok: boolean; reason: string }> {
+    if (!(await this.isAvailable())) {
+      return { ok: false, reason: 'cdp-unavailable' };
     }
-    const pages = composerPageOrder(await this.listTargets());
-    const out: ComposerAgentPageProbe[] = [];
-    for (const page of pages) {
-      try {
-        const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
-        try {
-          await send('Runtime.enable');
-          const r = (await send('Runtime.evaluate', {
-            expression: COMPOSER_AGENT_PROBE_JS,
-            returnByValue: true,
-          })) as { result?: { value?: unknown } };
-          const v = parseComposerAgentProbeValue(r.result?.value);
-          if (v) out.push({ title: page.title, ...v });
-        } finally {
-          close();
-        }
-      } catch {
-        /* try next window */
-      }
+    const targets = await this.listTargets();
+    if (opts?.windowTitle) {
+      const t = targets.find((x) => (x.title || '').includes(opts.windowTitle!));
+      if (!t) return { ok: false, reason: 'window-not-found' };
     }
-    return out;
+    const rows = (await runProbeOnTargets(COMPOSER_SWITCH_PROBE_ID, targets, {
+      composerId,
+    })) as { ok: boolean; reason: string }[];
+    if (rows.some((r) => r.ok)) return { ok: true, reason: 'clicked' };
+    return { ok: false, reason: rows[0]?.reason || 'no-element' };
+  }
+
+  async sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult> {
+    const r = await sendComposerMessage(text, { windowTitle: opts?.windowTitle });
+    return {
+      ok: true,
+      text: r.text,
+      pageTitle: r.pageTitle,
+      submitHow: r.submitHow,
+    };
   }
 }
 

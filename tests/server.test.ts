@@ -86,11 +86,14 @@ describe('HTTP API', () => {
   });
 
   it('POST /api/send validates text', async () => {
+    jest.useFakeTimers({ legacyFakeTimers: true });
     const app = createApp(store, { ...noCdp, send: async (t) => ({ ok: true, text: t }) });
     const bad = await request(app).post('/api/send').send({ text: '  ' });
     expect(bad.status).toBe(400);
     const ok = await request(app).post('/api/send').send({ text: 'hi' });
     expect(ok.status).toBe(200);
     expect(ok.body.text).toBe('hi');
+    jest.runAllTimers();
+    jest.useRealTimers();
   });
 });

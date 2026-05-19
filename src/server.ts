@@ -7,9 +7,13 @@ import { checkCdpAvailable, cdpBaseUrl } from './cdp/client';
 import { CursorModel } from './cursor/cursor-model';
 import type { CdpPort } from './cdp/port';
 import { liveCdp } from './cdp/live-cdp';
-import { sendComposerMessage } from './cdp/send';
+import { scheduleSendRelease } from './send-guard';
 
-export type SendHandler = (text: string) => Promise<{ ok: true; text: string }>;
+export type SendHandler = (
+  text: string,
+  composerId?: string,
+  windowTitle?: string
+) => Promise<{ ok: true; text: string; pageTitle?: string }>;
 
 export function createApp(
   store: ChatStore,
@@ -17,11 +21,13 @@ export function createApp(
 ): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
-  const send = opts?.send ?? (async (text: string) => {
-    const r = await sendComposerMessage(text);
-    return { ok: true, text: r.text };
-  });
   const cursor = opts?.cursor ?? new CursorModel(store, opts?.cdp ?? liveCdp);
+  const send =
+    opts?.send ??
+    (async (text: string, composerId?: string, windowTitle?: string) => {
+      const r = await cursor.send(text, { composerId, windowTitle });
+      return { ok: true, text: r.text, pageTitle: r.pageTitle };
+    });
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
@@ -40,20 +46,20 @@ export function createApp(
 
   app.get('/api/cdp/agent', async (_req, res) => {
     const st = await cursor.agentState();
-    res.json({ ok: st.cdpOk, busy: st.cdpBusy, agent: st });
+    res.json({ ok: st.cdpOk, busy: st.cdpBusy, agent: st, deprecated: true });
   });
 
   app.get('/api/agent', async (req, res) => {
     const composerId = typeof req.query.composerId === 'string' ? req.query.composerId : '';
     if (!composerId) {
-      res.json(await cursor.agentState());
+      res.json({ ...(await cursor.agentState()), deprecated: true });
       return;
     }
     if (!store.reader.getComposerData(composerId)) {
       res.status(404).json({ error: 'chat not found' });
       return;
     }
-    res.json(await cursor.agentState(composerId));
+    res.json({ ...(await cursor.agentState(composerId)), deprecated: true });
   });
 
   let sendBusy = false;
@@ -61,6 +67,10 @@ export function createApp(
 
   app.post('/api/send', async (req, res) => {
     const text = typeof req.body?.text === 'string' ? req.body.text : '';
+    const composerId =
+      typeof req.body?.composerId === 'string' ? req.body.composerId : undefined;
+    const windowTitle =
+      typeof req.body?.windowTitle === 'string' ? req.body.windowTitle : undefined;
     const trimmed = text.trim();
     if (!trimmed) {
       res.status(400).json({ error: 'text required' });
@@ -78,13 +88,14 @@ export function createApp(
     sendBusy = true;
     lastServerSend = { text: trimmed, at: now };
     try {
-      const result = await send(trimmed);
+      const result = await send(trimmed, composerId, windowTitle);
       res.json(result);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      res.status(502).json({ error: msg });
+      const code = msg.includes('switch failed') ? 409 : 502;
+      res.status(code).json({ error: msg });
     } finally {
-      setTimeout(() => {
+      scheduleSendRelease(() => {
         sendBusy = false;
       }, 1200);
     }

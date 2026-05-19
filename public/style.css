@@ -180,6 +180,10 @@ aside {
   color: var(--base00);
 }
 
+.agent-panel .mismatch {
+  color: var(--orange);
+}
+
 .agent-panel[data-phase='unknown'] {
   background: var(--base3);
   color: var(--base1);

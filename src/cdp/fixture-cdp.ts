@@ -6,15 +6,17 @@ import {
   COMPOSER_AGENT_PROBE_ID,
   parseComposerAgentProbeValue,
 } from './probes/composer-agent.v1';
-import type { CdpPort, CdpProbeId } from './port';
+import type { CdpPort, CdpSendResult } from './port';
 
-export type FixtureScenario = 'idle' | 'busy' | 'down';
+export type FixtureScenario = 'idle' | 'busy' | 'down' | 'no-bar' | 'send-blocked' | 'switch-fail';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 
 function loadJson<T>(name: string): T {
   return JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, name), 'utf8')) as T;
 }
+
+const NO_BAR = { busy: false, reason: 'no-bar' as const };
 
 export class FixtureCdp implements CdpPort {
   constructor(private readonly scenario: FixtureScenario = 'idle') {}
@@ -30,7 +32,7 @@ export class FixtureCdp implements CdpPort {
     return loadJson<CdpTarget[]>('targets.default.json');
   }
 
-  async runProbe(probeId: CdpProbeId): Promise<ComposerAgentPageProbe[]> {
+  async runProbe(probeId: typeof COMPOSER_AGENT_PROBE_ID): Promise<ComposerAgentPageProbe[]> {
     if (probeId !== COMPOSER_AGENT_PROBE_ID) {
       throw new Error(`unknown probe: ${probeId}`);
     }
@@ -39,10 +41,35 @@ export class FixtureCdp implements CdpPort {
     const busy = loadJson('composer-busy.json');
 
     return targets.map((t) => {
+      if (this.scenario === 'no-bar') {
+        return { title: t.title, ...NO_BAR };
+      }
       const useBusy =
-        this.scenario === 'busy' && /cr - cr - Cursor/i.test(t.title || '');
+        (this.scenario === 'busy' || this.scenario === 'send-blocked') &&
+        /cr - cr - Cursor/i.test(t.title || '');
       const v = parseComposerAgentProbeValue(useBusy ? busy : idle)!;
       return { title: t.title, ...v };
     });
+  }
+
+  async switchComposer(
+    _composerId: string,
+    _opts?: { windowTitle?: string }
+  ): Promise<{ ok: boolean; reason: string }> {
+    if (this.scenario === 'switch-fail') {
+      return { ok: false, reason: 'no-element' };
+    }
+    return { ok: true, reason: 'fixture-skip' };
+  }
+
+  async sendMessage(text: string): Promise<CdpSendResult> {
+    if (this.scenario === 'down') throw new Error('cdp unavailable');
+    if (this.scenario === 'no-bar') throw new Error('composer no-bar');
+    if (this.scenario === 'send-blocked') {
+      throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
+    }
+    const targets = await this.listTargets();
+    const page = targets.find((t) => /cr - cr - Cursor/i.test(t.title || '')) || targets[0];
+    return { ok: true, text, pageTitle: page?.title || 'fixture' };
   }
 }

@@ -37,7 +37,11 @@ export class CursorModel {
         const targets = await this.cdp.listTargets();
         const probes = await this.cdp.runProbe(COMPOSER_AGENT_PROBE_ID);
         windows = targets
-          .filter((t) => t.type === 'page' && (t.url || '').includes('workbench.html'))
+          .filter(
+            (t) =>
+              (t.type === 'page' && (t.url || '').includes('workbench.html')) ||
+              t.type === 'webview'
+          )
           .map((t) => ({
             id: t.id,
             title: t.title,
@@ -78,5 +82,19 @@ export class CursorModel {
 
   agentState(composerId?: string): Promise<AgentState> {
     return composerId ? this.agent.forComposer(composerId) : this.agent.forCdp();
+  }
+
+  async send(
+    text: string,
+    opts?: { composerId?: string; windowTitle?: string }
+  ): Promise<{ ok: true; text: string; pageTitle: string }> {
+    if (opts?.composerId) {
+      const sw = await this.cdp.switchComposer(opts.composerId, {
+        windowTitle: opts.windowTitle,
+      });
+      if (!sw.ok) throw new Error(`switch failed: ${sw.reason}`);
+    }
+    const r = await this.cdp.sendMessage(text, { windowTitle: opts?.windowTitle });
+    return { ok: true, text: r.text, pageTitle: r.pageTitle };
   }
 }

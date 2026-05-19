@@ -57,7 +57,10 @@ export interface SendResult {
   submitHow?: string;
 }
 
-export async function sendComposerMessage(text: string): Promise<SendResult> {
+export async function sendComposerMessage(
+  text: string,
+  opts?: { windowTitle?: string }
+): Promise<SendResult> {
   const trimmed = text.trim();
   if (!trimmed) throw new Error('empty message');
 
@@ -67,7 +70,11 @@ export async function sendComposerMessage(text: string): Promise<SendResult> {
   }
 
   const targets = await listTargets(base);
-  const page = await pickWorkbenchWithComposer(targets);
+  let page = await pickWorkbenchWithComposer(targets);
+  if (opts?.windowTitle) {
+    const match = targets.find((t) => (t.title || '').includes(opts.windowTitle!));
+    if (match) page = match;
+  }
   if (!page) throw new Error('no Cursor window with composer');
 
   const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
