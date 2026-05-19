@@ -177,9 +177,10 @@ function applyAgentEvents(st, prevBusy) {
 async function pollAgent() {
   const q = activeId ? `?composerId=${encodeURIComponent(activeId)}` : '';
   try {
-    const res = await fetch(`/api/agent${q}`);
+    const res = await fetch(`/api/cursor/snapshot${q}`);
     if (!res.ok) return;
-    const st = await res.json();
+    const snap = await res.json();
+    const st = snap.agent;
     const prevBusy = lastAgentState?.busy;
     lastAgentState = st;
     renderAgentState(st);
