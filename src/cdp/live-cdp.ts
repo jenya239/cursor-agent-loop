@@ -54,8 +54,15 @@ export class LiveCdp implements CdpPort {
     return { ok: false, reason: rows[0]?.reason || 'no-element' };
   }
 
-  async sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult> {
-    const r = await runComposerSend(text, { windowTitle: opts?.windowTitle, base: this.base });
+  async sendMessage(
+    text: string,
+    opts?: { windowTitle?: string; allowBusy?: boolean }
+  ): Promise<CdpSendResult> {
+    const r = await runComposerSend(text, {
+      windowTitle: opts?.windowTitle,
+      allowBusy: opts?.allowBusy,
+      base: this.base,
+    });
     return { ok: true, text: r.text, pageTitle: r.pageTitle, submitHow: r.submitHow };
   }
 }

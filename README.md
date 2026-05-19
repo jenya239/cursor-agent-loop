@@ -74,3 +74,16 @@ npm run test:e2e
 ```
 
 Фронт: `src/ui/` → `public/bundle.js`. Список — `/api/chats`, live — snapshot/SSE.
+
+## MCP (управление Cursor из агента)
+
+Сервер stdio: инструменты `cursor_list_chats`, `cursor_get_chat`, `cursor_snapshot`, `cursor_send`, …
+
+```bash
+npm run build
+npm run mcp   # stdio (для отладки)
+```
+
+Регистрация в Cursor: [`.cursor/mcp.json`](.cursor/mcp.json) (`cr-cursor`). После `npm run build` перезагрузите MCP в Cursor (Settings → MCP).
+
+Требования те же: `state.vscdb`, CDP для send/snapshot.

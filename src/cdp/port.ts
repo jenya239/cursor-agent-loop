@@ -24,5 +24,8 @@ export interface CdpPort {
     composerId: string,
     opts?: { windowTitle?: string; chatName?: string }
   ): Promise<{ ok: boolean; reason: string; switchTarget?: string }>;
-  sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult>;
+  sendMessage(
+    text: string,
+    opts?: { windowTitle?: string; allowBusy?: boolean }
+  ): Promise<CdpSendResult>;
 }

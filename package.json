@@ -13,23 +13,27 @@
     "probe:dump": "tsx scripts/probe-dump.ts",
     "test": "jest",
     "test:e2e": "playwright test",
-    "fixture:record": "tsx scripts/fixture-record.ts"
+    "fixture:record": "tsx scripts/fixture-record.ts",
+    "mcp": "node dist/mcp/stdio-main.js",
+    "premcp": "npm run build"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^11.9.0",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.10",
     "@types/supertest": "^6.0.2",
+    "concurrently": "^9.1.2",
     "esbuild": "^0.25.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
-    "@playwright/test": "^1.51.0",
-    "concurrently": "^9.1.2",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.6",
     "tsx": "^4.19.3",

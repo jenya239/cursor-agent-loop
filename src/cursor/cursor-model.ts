@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { AgentModel, type AgentState } from '../agent-model';
 import { probeComposerAgent } from '../cdp/composer-agent-probe';
 import type { ChatStore } from '../chat-store';
@@ -5,6 +6,7 @@ import type { CdpPort } from '../cdp/port';
 import { COMPOSER_AGENT_PROBE_ID } from '../cdp/probes/composer-agent.v1';
 import { liveCdp } from '../cdp/live-cdp';
 import { isSendStrict } from '../send-strict';
+import { isAgentBusySendError, SendQueue, type QueuedSend } from '../send-queue';
 import type {
   ChatDetailView,
   ComposerSwitchResult,
@@ -29,6 +31,7 @@ function cdpProbeFrom(port: CdpPort) {
 
 export class CursorModel {
   private readonly agent: AgentModel;
+  private readonly sendQueue: SendQueue;
   private switchCache: {
     composerId: string;
     at: number;
@@ -37,8 +40,10 @@ export class CursorModel {
 
   constructor(
     private readonly store: ChatStore,
-    private readonly cdp: CdpPort = liveCdp
+    private readonly cdp: CdpPort = liveCdp,
+    sendQueue?: SendQueue
   ) {
+    this.sendQueue = sendQueue ?? new SendQueue();
     this.agent = new AgentModel(store.reader, cdpProbeFrom(cdp));
   }
 
@@ -134,5 +139,73 @@ export class CursorModel {
     }
     const r = await this.cdp.sendMessage(text, { windowTitle: opts?.windowTitle });
     return { ok: true, text: r.text, pageTitle: r.pageTitle };
+  }
+
+  async enqueueSend(
+    text: string,
+    opts?: { composerId?: string; windowTitle?: string }
+  ): Promise<QueuedSend & { position: number; native?: boolean; pageTitle?: string }> {
+    const trimmed = text.trim();
+    if (!trimmed) throw new Error('empty message');
+    let windowTitle = opts?.windowTitle;
+    if (opts?.composerId) {
+      const sw = await this.resolveSwitch(opts.composerId);
+      if (sw?.switchTarget) windowTitle = sw.switchTarget;
+    }
+    try {
+      const r = await this.cdp.sendMessage(trimmed, { windowTitle, allowBusy: true });
+      return {
+        id: crypto.randomUUID(),
+        at: Date.now(),
+        text: trimmed,
+        composerId: opts?.composerId,
+        windowTitle,
+        position: 0,
+        native: true,
+        pageTitle: r.pageTitle,
+      };
+    } catch {
+      const item = this.sendQueue.enqueue(trimmed, opts);
+      void this.drainSendQueue();
+      return { ...item, position: this.sendQueue.length };
+    }
+  }
+
+  listSendQueue(): QueuedSend[] {
+    return this.sendQueue.list();
+  }
+
+  private async canSendNow(composerId?: string): Promise<boolean> {
+    if (!(await this.cdp.isAvailable())) return false;
+    const st = composerId
+      ? await this.agent.forComposer(composerId)
+      : await this.agent.forCdp();
+    return st.cdpOk && !st.cdpBusy && !st.busy;
+  }
+
+  async drainSendQueue(): Promise<{ sent: number; remaining: number; lastPageTitle?: string }> {
+    let sent = 0;
+    let lastPageTitle: string | undefined;
+    while (this.sendQueue.peek()) {
+      const item = this.sendQueue.peek()!;
+      if (!(await this.canSendNow(item.composerId))) break;
+      this.sendQueue.shift();
+      try {
+        const r = await this.send(item.text, {
+          composerId: item.composerId,
+          windowTitle: item.windowTitle,
+        });
+        lastPageTitle = r.pageTitle;
+        sent++;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (isAgentBusySendError(msg)) {
+          this.sendQueue.unshift(item);
+          break;
+        }
+        throw e;
+      }
+    }
+    return { sent, remaining: this.sendQueue.length, lastPageTitle };
   }
 }

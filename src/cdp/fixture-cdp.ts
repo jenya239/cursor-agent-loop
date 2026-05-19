@@ -72,10 +72,13 @@ export class FixtureCdp implements CdpPort {
     return { ok: true, reason: 'fixture-skip' };
   }
 
-  async sendMessage(text: string): Promise<CdpSendResult> {
+  async sendMessage(
+    text: string,
+    opts?: { windowTitle?: string; allowBusy?: boolean }
+  ): Promise<CdpSendResult> {
     if (this.scenario === 'down') throw new Error('cdp unavailable');
     if (this.scenario === 'no-bar') throw new Error('composer no-bar');
-    if (this.scenario === 'send-blocked') {
+    if (this.scenario === 'send-blocked' && !opts?.allowBusy) {
       throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
     }
     const targets = await this.listTargets();

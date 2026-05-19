@@ -8,6 +8,8 @@ import { CursorModel } from './cursor/cursor-model';
 import type { CdpPort } from './cdp/port';
 import { liveCdp } from './cdp/live-cdp';
 import { scheduleSendRelease } from './send-guard';
+import { startSendQueueDrain } from './send-queue-drain';
+import { isAgentBusySendError } from './send-queue';
 
 export type SendHandler = (
   text: string,
@@ -17,11 +19,19 @@ export type SendHandler = (
 
 export function createApp(
   store: ChatStore,
-  opts?: { send?: SendHandler; cdp?: CdpPort; cursor?: CursorModel }
+  opts?: {
+    send?: SendHandler;
+    cdp?: CdpPort;
+    cursor?: CursorModel;
+    sendQueueDrain?: boolean;
+  }
 ): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
   const cursor = opts?.cursor ?? new CursorModel(store, opts?.cdp ?? liveCdp);
+  if (opts?.sendQueueDrain !== false) {
+    startSendQueueDrain(cursor);
+  }
   const send =
     opts?.send ??
     (async (text: string, composerId?: string, windowTitle?: string) => {
@@ -88,9 +98,25 @@ export function createApp(
       typeof req.body?.composerId === 'string' ? req.body.composerId : undefined;
     const windowTitle =
       typeof req.body?.windowTitle === 'string' ? req.body.windowTitle : undefined;
+    const queue = req.body?.queue === true || req.body?.queue === 'true';
     const trimmed = text.trim();
     if (!trimmed) {
       res.status(400).json({ error: 'text required' });
+      return;
+    }
+    if (queue) {
+      try {
+        const item = await cursor.enqueueSend(trimmed, { composerId, windowTitle });
+        res.status(202).json({
+          ok: true,
+          queued: true,
+          native: item.native === true,
+          id: item.id,
+          position: item.position,
+        });
+      } catch (e) {
+        res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+      }
       return;
     }
     const now = Date.now();
@@ -109,6 +135,17 @@ export function createApp(
       res.json(result);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      if (req.body?.queueOnBusy && isAgentBusySendError(msg)) {
+        const item = await cursor.enqueueSend(trimmed, { composerId, windowTitle });
+        res.status(202).json({
+          ok: true,
+          queued: true,
+          native: item.native === true,
+          id: item.id,
+          position: item.position,
+        });
+        return;
+      }
       const code = msg.includes('switch failed') ? 409 : 502;
       res.status(code).json({ error: msg });
     } finally {
@@ -116,6 +153,34 @@ export function createApp(
         sendBusy = false;
       }, 1200);
     }
+  });
+
+  app.get('/api/send/queue', (_req, res) => {
+    res.json({ items: cursor.listSendQueue() });
+  });
+
+  app.post('/api/send/queue', async (req, res) => {
+    const text = typeof req.body?.text === 'string' ? req.body.text : '';
+    const composerId =
+      typeof req.body?.composerId === 'string' ? req.body.composerId : undefined;
+    const windowTitle =
+      typeof req.body?.windowTitle === 'string' ? req.body.windowTitle : undefined;
+    try {
+      const item = await cursor.enqueueSend(text, { composerId, windowTitle });
+      res.status(202).json({
+        ok: true,
+        queued: true,
+        native: item.native === true,
+        id: item.id,
+        position: item.position,
+      });
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post('/api/send/flush', async (_req, res) => {
+    res.json(await cursor.drainSendQueue());
   });
 
   app.get('/api/status', (_req, res) => {

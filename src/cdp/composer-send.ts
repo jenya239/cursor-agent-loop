@@ -57,7 +57,7 @@ export interface ComposerSendResult {
 
 export async function runComposerSend(
   text: string,
-  opts?: { windowTitle?: string; base?: string }
+  opts?: { windowTitle?: string; base?: string; allowBusy?: boolean }
 ): Promise<ComposerSendResult> {
   const trimmed = text.trim();
   if (!trimmed) throw new Error('empty message');
@@ -84,7 +84,7 @@ export async function runComposerSend(
       returnByValue: true,
     })) as { result?: { value?: unknown } };
     const agent = parseComposerAgentProbeValue(probe.result?.value);
-    if (agent?.busy) {
+    if (!opts?.allowBusy && agent?.busy) {
       throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
     }
 

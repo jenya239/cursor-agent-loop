@@ -5,7 +5,7 @@ import { ChatStore } from '../src/chat-store';
 import { CursorMock } from '../src/cdp/cursor-mock';
 import { createTestDb, removeTestDb, COMPOSER_ID, BUSY_COMPOSER_ID } from './fixture';
 
-const noCdp = { cdp: CursorMock.port('idle') };
+const noCdp = { cdp: CursorMock.port('idle'), sendQueueDrain: false };
 
 describe('HTTP API', () => {
   let dbPath: string;
@@ -85,6 +85,18 @@ describe('HTTP API', () => {
     const res = await request(app).get('/api/db');
     expect(res.status).toBe(200);
     expect(res.body.path).toContain('.vscdb');
+  });
+
+  it('POST /api/send/queue enqueues', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app)
+      .post('/api/send/queue')
+      .send({ text: 'later', composerId: BUSY_COMPOSER_ID });
+    expect(res.status).toBe(202);
+    expect(res.body.queued).toBe(true);
+    expect(res.body.native).toBe(true);
+    const list = await request(app).get('/api/send/queue');
+    expect(list.body.items).toHaveLength(0);
   });
 
   it('POST /api/send validates text', async () => {
