@@ -49,4 +49,13 @@ describe('HTTP API', () => {
     const res = await request(app).get('/api/chats/00000000-0000-0000-0000-000000000000');
     expect(res.status).toBe(404);
   });
+
+  it('POST /api/send validates text', async () => {
+    const app = createApp(store, { send: async (t) => ({ ok: true, text: t }) });
+    const bad = await request(app).post('/api/send').send({ text: '  ' });
+    expect(bad.status).toBe(400);
+    const ok = await request(app).post('/api/send').send({ text: 'hi' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.text).toBe('hi');
+  });
 });

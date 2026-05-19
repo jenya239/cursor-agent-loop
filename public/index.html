@@ -17,7 +17,13 @@
   </header>
   <div id="layout">
     <aside id="list"><p class="loading">…</p></aside>
-    <main id="chat"><p class="hint">—</p></main>
+    <section id="chat-col">
+      <main id="chat"><p class="hint">—</p></main>
+      <div id="compose" class="compose">
+        <textarea id="compose-input" rows="2" placeholder="Сообщение в активный чат Cursor…" disabled autocomplete="off"></textarea>
+        <button type="button" id="compose-send" disabled title="Отправить">↵</button>
+      </div>
+    </section>
   </div>
   <script src="/app.js"></script>
 </body>

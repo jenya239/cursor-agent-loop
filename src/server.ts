@@ -3,12 +3,61 @@ import path from 'path';
 import { CursorDbReader } from './db/reader';
 import { globalDbPath } from './db/paths';
 import { ChatStore } from './chat-store';
+import { checkCdpAvailable, cdpBaseUrl } from './cdp/client';
+import { sendComposerMessage } from './cdp/send';
 
-export function createApp(store: ChatStore): express.Express {
+export type SendHandler = (text: string) => Promise<{ ok: true; text: string }>;
+
+export function createApp(
+  store: ChatStore,
+  opts?: { send?: SendHandler }
+): express.Express {
   const app = express();
+  app.use(express.json({ limit: '256kb' }));
+  const send = opts?.send ?? (async (text: string) => {
+    const r = await sendComposerMessage(text);
+    return { ok: true, text: r.text };
+  });
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  app.get('/api/cdp/status', async (_req, res) => {
+    const url = cdpBaseUrl();
+    res.json({ ok: await checkCdpAvailable(url), url });
+  });
+
+  let sendBusy = false;
+  let lastServerSend = { text: '', at: 0 };
+
+  app.post('/api/send', async (req, res) => {
+    const text = typeof req.body?.text === 'string' ? req.body.text : '';
+    const trimmed = text.trim();
+    if (!trimmed) {
+      res.status(400).json({ error: 'text required' });
+      return;
+    }
+    const now = Date.now();
+    if (sendBusy) {
+      res.status(429).json({ error: 'send in progress' });
+      return;
+    }
+    if (trimmed === lastServerSend.text && now - lastServerSend.at < 2500) {
+      res.status(429).json({ error: 'duplicate send' });
+      return;
+    }
+    sendBusy = true;
+    lastServerSend = { text: trimmed, at: now };
+    try {
+      const result = await send(trimmed);
+      res.json(result);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.status(502).json({ error: msg });
+    } finally {
+      sendBusy = false;
+    }
   });
 
   app.get('/api/status', (_req, res) => {

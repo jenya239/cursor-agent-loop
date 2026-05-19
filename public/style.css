@@ -111,13 +111,79 @@ aside {
   background: var(--base2);
 }
 
-main {
+#chat-col {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--base3);
+}
+
+#chat {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 6px;
+}
+
+.compose {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+  border-top: 1px solid var(--base2);
+  background: var(--base2);
+}
+
+.compose textarea {
+  flex: 1;
+  min-height: 36px;
+  max-height: 120px;
+  resize: vertical;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.25;
+  padding: 4px 5px;
+  border: 1px solid var(--base1);
   background: var(--base3);
+  color: var(--base02);
+}
+
+.compose textarea:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.compose textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+#compose-send {
+  flex-shrink: 0;
+  align-self: flex-end;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  padding: 4px 8px;
+  background: var(--base3);
+  color: var(--base01);
+  border: 1px solid var(--base1);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+#compose-send:hover:not(:disabled) {
+  background: var(--blue);
+  color: var(--base3);
+  border-color: var(--blue);
+}
+
+#compose-send:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .hint, .loading {

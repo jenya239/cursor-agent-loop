@@ -3,7 +3,13 @@ const chatEl = document.getElementById('chat');
 const statusEl = document.getElementById('status');
 const refreshBtn = document.getElementById('refresh');
 const wsFilterEl = document.getElementById('ws-filter');
+const composeInput = document.getElementById('compose-input');
+const composeSend = document.getElementById('compose-send');
 let activeId = null;
+let sending = false;
+let lastSendAt = 0;
+let lastSendText = '';
+const SEND_COOLDOWN_MS = 2500;
 let listPollTimer = null;
 let chatPollTimer = null;
 let lastChatSig = '';
@@ -13,6 +19,71 @@ const CHAT_POLL_MS = 1000;
 
 refreshBtn.addEventListener('click', () => refreshServer());
 wsFilterEl.addEventListener('change', () => renderList(filterChats(allChats)));
+
+function setComposeEnabled(on) {
+  composeInput.disabled = !on || sending;
+  composeSend.disabled = !on || sending;
+}
+
+composeSend.addEventListener('click', () => submitCompose());
+
+composeInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    e.stopPropagation();
+    submitCompose();
+  }
+});
+
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (sending && e.key === 'Enter') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  },
+  true
+);
+
+async function submitCompose() {
+  const text = composeInput.value.trim();
+  if (!text || !activeId || sending) return;
+  const now = Date.now();
+  if (text === lastSendText && now - lastSendAt < SEND_COOLDOWN_MS) return;
+  if (now - lastSendAt < 800) return;
+
+  const draft = text;
+  sending = true;
+  lastSendAt = now;
+  lastSendText = draft;
+  composeInput.value = '';
+  composeInput.blur();
+  setComposeEnabled(false);
+  stopChatPoll();
+
+  const prevStatus = statusEl.textContent;
+  setStatus('Отправка…', true);
+  try {
+    const res = await fetch('/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: draft, composerId: activeId }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || res.statusText);
+    await loadChat(activeId, { silent: true, force: true, pinBottom: true });
+    setStatus(prevStatus, false);
+  } catch (e) {
+    composeInput.value = draft;
+    setStatus('Ошибка: ' + e.message, false);
+    lastSendText = '';
+  } finally {
+    sending = false;
+    setComposeEnabled(!!activeId);
+    if (activeId) startChatPoll(activeId);
+  }
+}
 
 function setStatus(text, loading) {
   statusEl.textContent = text;
@@ -226,13 +297,16 @@ async function openChat(id) {
   stopChatPoll();
   activeId = id;
   lastChatSig = '';
+  setComposeEnabled(true);
 
   try {
     await loadChat(id, { force: true, pinBottom: true });
     await loadList();
     startChatPoll(id);
+    composeInput.focus();
   } catch (e) {
     chatEl.innerHTML = `<p class="err">${esc(e.message)}</p>`;
+    setComposeEnabled(false);
   }
 }
 
