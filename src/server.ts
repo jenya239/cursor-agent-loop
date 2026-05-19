@@ -4,29 +4,16 @@ import { CursorDbReader } from './db/reader';
 import { globalDbPath } from './db/paths';
 import { ChatStore } from './chat-store';
 import { checkCdpAvailable, cdpBaseUrl } from './cdp/client';
-import { AgentModel, type CdpProbe } from './agent-model';
-import { probeComposerAgent } from './cdp/composer-agent-probe';
+import { CursorModel } from './cursor/cursor-model';
+import type { CdpPort } from './cdp/port';
 import { liveCdp } from './cdp/live-cdp';
 import { sendComposerMessage } from './cdp/send';
 
 export type SendHandler = (text: string) => Promise<{ ok: true; text: string }>;
 
-export type CdpAgentBusyFn = () => Promise<boolean>;
-
-const defaultCdpProbe: CdpProbe = async () => {
-  const d = await probeComposerAgent(liveCdp);
-  return { ok: d.cdpOk, busy: d.busy, reason: d.reason, windowTitle: d.windowTitle };
-};
-
 export function createApp(
   store: ChatStore,
-  opts?: {
-    send?: SendHandler;
-    cdpProbe?: CdpProbe;
-    /** @deprecated use cdpProbe */
-    getCdpAgentBusy?: CdpAgentBusyFn;
-    agentModel?: AgentModel;
-  }
+  opts?: { send?: SendHandler; cdp?: CdpPort; cursor?: CursorModel }
 ): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
@@ -34,12 +21,7 @@ export function createApp(
     const r = await sendComposerMessage(text);
     return { ok: true, text: r.text };
   });
-  const cdpProbe: CdpProbe =
-    opts?.cdpProbe ??
-    (opts?.getCdpAgentBusy
-      ? async () => ({ ok: true, busy: await opts.getCdpAgentBusy!() })
-      : defaultCdpProbe);
-  const agentModel = opts?.agentModel ?? new AgentModel(store.reader, cdpProbe);
+  const cursor = opts?.cursor ?? new CursorModel(store, opts?.cdp ?? liveCdp);
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
@@ -50,22 +32,28 @@ export function createApp(
     res.json({ ok: await checkCdpAvailable(url), url });
   });
 
+  app.get('/api/cursor/snapshot', async (req, res) => {
+    const composerId =
+      typeof req.query.composerId === 'string' ? req.query.composerId : undefined;
+    res.json(await cursor.snapshot(composerId));
+  });
+
   app.get('/api/cdp/agent', async (_req, res) => {
-    const st = await agentModel.forCdp();
+    const st = await cursor.agentState();
     res.json({ ok: st.cdpOk, busy: st.cdpBusy, agent: st });
   });
 
   app.get('/api/agent', async (req, res) => {
     const composerId = typeof req.query.composerId === 'string' ? req.query.composerId : '';
     if (!composerId) {
-      res.json(await agentModel.forCdp());
+      res.json(await cursor.agentState());
       return;
     }
     if (!store.reader.getComposerData(composerId)) {
       res.status(404).json({ error: 'chat not found' });
       return;
     }
-    res.json(await agentModel.forComposer(composerId));
+    res.json(await cursor.agentState(composerId));
   });
 
   let sendBusy = false;
@@ -158,7 +146,7 @@ export function createApp(
     }
     const fresh = req.query.fresh === '1';
     const { summary, messages } = store.getChat(composerId, fresh);
-    const agent = await agentModel.forComposer(composerId);
+    const agent = await cursor.agentState(composerId);
     res.json({
       ...summary,
       composerId,

@@ -5,7 +5,7 @@ import { ChatStore } from '../src/chat-store';
 import { CursorMock } from '../src/cdp/cursor-mock';
 import { createTestDb, removeTestDb, COMPOSER_ID, BUSY_COMPOSER_ID } from './fixture';
 
-const noCdp = { cdpProbe: CursorMock.idle() };
+const noCdp = { cdp: CursorMock.port('idle') };
 
 describe('HTTP API', () => {
   let dbPath: string;
@@ -62,10 +62,19 @@ describe('HTTP API', () => {
   });
 
   it('GET /api/cdp/agent', async () => {
-    const app = createApp(store, { cdpProbe: CursorMock.agentRunning() });
+    const app = createApp(store, { cdp: CursorMock.port('busy') });
     const res = await request(app).get('/api/cdp/agent');
     expect(res.status).toBe(200);
     expect(res.body.busy).toBe(true);
+  });
+
+  it('GET /api/cursor/snapshot', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app).get(`/api/cursor/snapshot?composerId=${BUSY_COMPOSER_ID}`);
+    expect(res.status).toBe(200);
+    expect(res.body.chats.length).toBeGreaterThan(0);
+    expect(res.body.agent.busy).toBe(true);
+    expect(res.body.cdp.ok).toBe(true);
   });
 
   it('GET /api/agent for composer', async () => {
