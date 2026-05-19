@@ -2,9 +2,10 @@ import request from 'supertest';
 import { CursorDbReader } from '../src/db/reader';
 import { createApp } from '../src/server';
 import { ChatStore } from '../src/chat-store';
+import { CursorMock } from '../src/cdp/cursor-mock';
 import { createTestDb, removeTestDb, COMPOSER_ID, BUSY_COMPOSER_ID } from './fixture';
 
-const noCdp = { getCdpAgentBusy: async () => false };
+const noCdp = { cdpProbe: CursorMock.idle() };
 
 describe('HTTP API', () => {
   let dbPath: string;
@@ -61,7 +62,7 @@ describe('HTTP API', () => {
   });
 
   it('GET /api/cdp/agent', async () => {
-    const app = createApp(store, { getCdpAgentBusy: async () => true });
+    const app = createApp(store, { cdpProbe: CursorMock.agentRunning() });
     const res = await request(app).get('/api/cdp/agent');
     expect(res.status).toBe(200);
     expect(res.body.busy).toBe(true);

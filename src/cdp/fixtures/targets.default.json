@@ -1,0 +1,16 @@
+[
+  {
+    "id": "page-cr",
+    "title": "cr - cr - Cursor",
+    "type": "page",
+    "url": "vscode-file://vscode-app/usr/share/cursor/resources/app/out/vs/code/electron-sandbox/workbench/workbench.html",
+    "webSocketDebuggerUrl": "ws://fixture/cr"
+  },
+  {
+    "id": "page-nord",
+    "title": "schema.json - nord (Workspace) - Cursor",
+    "type": "page",
+    "url": "vscode-file://vscode-app/usr/share/cursor/resources/app/out/vs/code/electron-sandbox/workbench/workbench.html",
+    "webSocketDebuggerUrl": "ws://fixture/nord"
+  }
+]

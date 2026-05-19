@@ -1,4 +1,5 @@
 import { AgentModel } from '../src/agent-model';
+import { CursorMock } from '../src/cdp/cursor-mock';
 import { CursorDbReader } from '../src/db/reader';
 import { createTestDb, removeTestDb, COMPOSER_ID, BUSY_COMPOSER_ID } from './fixture';
 
@@ -25,7 +26,7 @@ describe('AgentModel', () => {
   });
 
   it('cdp busy when db idle', async () => {
-    const model = new AgentModel(reader, async () => ({ ok: true, busy: true }));
+    const model = new AgentModel(reader, CursorMock.agentRunning());
     const st = await model.forComposer(COMPOSER_ID);
     expect(st.dbBusy).toBe(false);
     expect(st.cdpBusy).toBe(true);

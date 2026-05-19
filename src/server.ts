@@ -4,17 +4,29 @@ import { CursorDbReader } from './db/reader';
 import { globalDbPath } from './db/paths';
 import { ChatStore } from './chat-store';
 import { checkCdpAvailable, cdpBaseUrl } from './cdp/client';
-import { AgentModel } from './agent-model';
-import { readComposerAgentDetail } from './cdp/agent-ui';
+import { AgentModel, type CdpProbe } from './agent-model';
+import { probeComposerAgent } from './cdp/composer-agent-probe';
+import { liveCdp } from './cdp/live-cdp';
 import { sendComposerMessage } from './cdp/send';
 
 export type SendHandler = (text: string) => Promise<{ ok: true; text: string }>;
 
 export type CdpAgentBusyFn = () => Promise<boolean>;
 
+const defaultCdpProbe: CdpProbe = async () => {
+  const d = await probeComposerAgent(liveCdp);
+  return { ok: d.cdpOk, busy: d.busy, reason: d.reason, windowTitle: d.windowTitle };
+};
+
 export function createApp(
   store: ChatStore,
-  opts?: { send?: SendHandler; getCdpAgentBusy?: CdpAgentBusyFn; agentModel?: AgentModel }
+  opts?: {
+    send?: SendHandler;
+    cdpProbe?: CdpProbe;
+    /** @deprecated use cdpProbe */
+    getCdpAgentBusy?: CdpAgentBusyFn;
+    agentModel?: AgentModel;
+  }
 ): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
@@ -22,10 +34,12 @@ export function createApp(
     const r = await sendComposerMessage(text);
     return { ok: true, text: r.text };
   });
-  const getCdpAgentBusy = opts?.getCdpAgentBusy ?? (async () => (await readComposerAgentDetail()).busy);
-  const agentModel =
-    opts?.agentModel ??
-    new AgentModel(store.reader, async () => ({ ok: true, busy: await getCdpAgentBusy() }));
+  const cdpProbe: CdpProbe =
+    opts?.cdpProbe ??
+    (opts?.getCdpAgentBusy
+      ? async () => ({ ok: true, busy: await opts.getCdpAgentBusy!() })
+      : defaultCdpProbe);
+  const agentModel = opts?.agentModel ?? new AgentModel(store.reader, cdpProbe);
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
