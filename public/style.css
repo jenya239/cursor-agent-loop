@@ -134,6 +134,28 @@ body {
 
 #refresh:disabled { opacity: 0.45; cursor: default; }
 
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.tab {
+  font: inherit;
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid var(--base1);
+  background: var(--base3);
+  color: var(--base01);
+  cursor: pointer;
+}
+
+.tab.active {
+  background: var(--base01);
+  color: var(--base3);
+  border-color: var(--base01);
+}
+
 #layout {
   display: flex;
   flex: 1;
@@ -425,6 +447,39 @@ aside {
   color: var(--red);
   padding: 4px 6px;
   font-size: 10px;
+}
+
+.watchdog-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  background: var(--base3);
+}
+
+.wd-summary {
+  margin-bottom: 8px;
+  font-size: 10px;
+  color: var(--base01);
+}
+
+.wd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.wd-table th,
+.wd-table td {
+  border: 1px solid var(--base2);
+  padding: 3px 5px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.wd-table th {
+  background: var(--base2);
+  color: var(--base01);
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }

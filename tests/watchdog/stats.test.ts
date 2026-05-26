@@ -8,9 +8,12 @@ describe('WatchdogStats', () => {
       polls_total: 0,
       modals_dismissed: { pretty_dialog: 0, revert: 0 },
       drain_sent_total: 0,
+      slow_recoveries_total: 0,
       errors_total: 0,
       last_dismiss_at: null,
+      last_observe_at: null,
       paused: false,
+      windows: [],
     });
   });
 
@@ -22,6 +25,16 @@ describe('WatchdogStats', () => {
     expect(snap.polls_total).toBe(1);
     expect(snap.modals_dismissed.pretty_dialog).toBe(1);
     expect(snap.last_dismiss_at).toBeTruthy();
+  });
+
+  it('records observe and slow recover', () => {
+    const s = new WatchdogStats(0);
+    s.recordObserve([{ windowTitle: 'mlc', composerId: 'x', model: 'Fast', busy: true, slowCount: 1, draftLen: 3, draftHasToken: true }]);
+    s.recordSlowRecover('mlc', { submitted: true });
+    const snap = s.snapshot(100);
+    expect(snap.windows).toHaveLength(1);
+    expect(snap.last_observe_at).toBeTruthy();
+    expect(snap.slow_recoveries_total).toBe(1);
   });
 
   it('ring buffer keeps last 100 events', () => {

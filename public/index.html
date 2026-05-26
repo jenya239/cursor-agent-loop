@@ -12,6 +12,10 @@
 <body>
   <div id="embed-warn" class="embed-warn" hidden>Откройте cr во внешнем браузере — во вкладке Cursor отправка зацикливается.</div>
   <header id="bar">
+    <nav class="tabs">
+      <button type="button" id="tab-chats" class="tab active">chats</button>
+      <button type="button" id="tab-watchdog" class="tab">watchdog</button>
+    </nav>
     <select id="ws-filter" title="workspace"><option value="">все</option></select>
     <select id="cdp-window" title="CDP window"><option value="">окно CDP</option></select>
     <span id="agent-indicator" class="agent-indicator idle" title="Агент в активном чате Cursor">AGENT · ждёт</span>
@@ -30,6 +34,9 @@
       </div>
     </section>
   </div>
+  <section id="watchdog-panel" class="watchdog-panel" hidden>
+    <div id="watchdog-body"><p class="loading">…</p></div>
+  </section>
   <script src="/bundle.js"></script>
 </body>
 </html>

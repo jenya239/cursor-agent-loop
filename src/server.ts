@@ -47,6 +47,16 @@ export function createApp(
     res.json(await cdp.status());
   });
 
+  app.get('/api/watchdog/stats', async (_req, res) => {
+    const { fetchWatchdogStats } = await import('./watchdog/proxy');
+    const r = await fetchWatchdogStats();
+    if (!r.ok) {
+      res.status(503).json({ error: r.error });
+      return;
+    }
+    res.json(r.data);
+  });
+
   app.get('/api/session', async (req, res) => {
     const token = typeof req.query.token === 'string' ? req.query.token : undefined;
     const composerId =

@@ -12,6 +12,7 @@ import { esc, shortPath } from './views/dom';
 import { renderChatHtml } from './views/render-chat';
 import { renderListHtml } from './views/render-list';
 import { applyAgentPanel } from './views/render-agent-panel';
+import { renderWatchdogHtml, type WatchdogStatsView } from './views/render-watchdog';
 import { isComposerMismatch } from './state/selectors';
 import { agentBus } from './agent-bus';
 
@@ -36,9 +37,49 @@ export function boot(): void {
   const agentPanelEl = document.getElementById('agent-panel')!;
   const embedWarn = document.getElementById('embed-warn');
   const dbPathEl = document.getElementById('db-path');
+  const layoutEl = document.getElementById('layout')!;
+  const tabChats = document.getElementById('tab-chats') as HTMLButtonElement;
+  const tabWatchdog = document.getElementById('tab-watchdog') as HTMLButtonElement;
+  const watchdogPanel = document.getElementById('watchdog-panel')!;
+  const watchdogBody = document.getElementById('watchdog-body')!;
+
+  let uiTab: 'chats' | 'watchdog' = 'chats';
+  let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 
   let lastSendAt = 0;
   let lastSendText = '';
+
+  function setUiTab(tab: 'chats' | 'watchdog') {
+    uiTab = tab;
+    tabChats.classList.toggle('active', tab === 'chats');
+    tabWatchdog.classList.toggle('active', tab === 'watchdog');
+    layoutEl.hidden = tab !== 'chats';
+    watchdogPanel.hidden = tab !== 'watchdog';
+    if (tab === 'watchdog') {
+      void refreshWatchdog();
+      if (!watchdogTimer) watchdogTimer = setInterval(() => void refreshWatchdog(), 4000);
+    } else if (watchdogTimer) {
+      clearInterval(watchdogTimer);
+      watchdogTimer = null;
+    }
+  }
+
+  async function refreshWatchdog() {
+    try {
+      const r = await fetch('/api/watchdog/stats');
+      if (!r.ok) {
+        const body = (await r.json().catch(() => ({}))) as { error?: string };
+        watchdogBody.innerHTML = renderWatchdogHtml(null, body.error || r.statusText);
+        return;
+      }
+      watchdogBody.innerHTML = renderWatchdogHtml((await r.json()) as WatchdogStatsView);
+    } catch (e) {
+      watchdogBody.innerHTML = renderWatchdogHtml(null, e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  tabChats.addEventListener('click', () => setUiTab('chats'));
+  tabWatchdog.addEventListener('click', () => setUiTab('watchdog'));
 
   function saveLastChat(id: string) {
     try {

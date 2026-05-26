@@ -476,6 +476,20 @@
     }
   }
 
+  // src/ui/views/render-watchdog.ts
+  function renderWatchdogHtml(stats, err) {
+    if (err) return `<p class="err">${esc(err)}</p><p class="hint">npm run watchdog:start</p>`;
+    if (!stats) return '<p class="loading">\uFFFD</p>';
+    const rows = stats.windows.map(
+      (w) => `<tr><td>${esc(w.windowTitle)}</td><td>${esc(w.composerId.slice(0, 8))}</td><td>${esc(w.model || "\uFFFD")}</td><td>${w.busy ? "busy" : "idle"}</td><td>${w.slowCount || ""}</td><td>${w.draftHasToken ? w.draftLen : ""}</td></tr>`
+    ).join("");
+    return `<div class="wd-summary">
+  uptime ${Math.round(stats.uptime_ms / 1e3)}s \uFFFD polls ${stats.polls_total} \uFFFD slow? ${stats.slow_recoveries_total} \uFFFD err ${stats.errors_total}${stats.paused ? " \uFFFD paused" : ""}
+  ${stats.last_observe_at ? ` \uFFFD ${esc(stats.last_observe_at)}` : ""}
+</div>
+<table class="wd-table"><thead><tr><th>window</th><th>composer</th><th>model</th><th>agent</th><th>slow</th><th>draft</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="hint">??? ????</td></tr>'}</tbody></table>`;
+  }
+
   // src/ui/app.ts
   var LS_LAST_CHAT = "cr.lastComposerId";
   var SEND_COOLDOWN_MS = 8e3;
@@ -496,8 +510,44 @@
     const agentPanelEl = document.getElementById("agent-panel");
     const embedWarn = document.getElementById("embed-warn");
     const dbPathEl = document.getElementById("db-path");
+    const layoutEl = document.getElementById("layout");
+    const tabChats = document.getElementById("tab-chats");
+    const tabWatchdog = document.getElementById("tab-watchdog");
+    const watchdogPanel = document.getElementById("watchdog-panel");
+    const watchdogBody = document.getElementById("watchdog-body");
+    let uiTab = "chats";
+    let watchdogTimer = null;
     let lastSendAt = 0;
     let lastSendText = "";
+    function setUiTab(tab) {
+      uiTab = tab;
+      tabChats.classList.toggle("active", tab === "chats");
+      tabWatchdog.classList.toggle("active", tab === "watchdog");
+      layoutEl.hidden = tab !== "chats";
+      watchdogPanel.hidden = tab !== "watchdog";
+      if (tab === "watchdog") {
+        void refreshWatchdog();
+        if (!watchdogTimer) watchdogTimer = setInterval(() => void refreshWatchdog(), 4e3);
+      } else if (watchdogTimer) {
+        clearInterval(watchdogTimer);
+        watchdogTimer = null;
+      }
+    }
+    async function refreshWatchdog() {
+      try {
+        const r = await fetch("/api/watchdog/stats");
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          watchdogBody.innerHTML = renderWatchdogHtml(null, body.error || r.statusText);
+          return;
+        }
+        watchdogBody.innerHTML = renderWatchdogHtml(await r.json());
+      } catch (e) {
+        watchdogBody.innerHTML = renderWatchdogHtml(null, e instanceof Error ? e.message : String(e));
+      }
+    }
+    tabChats.addEventListener("click", () => setUiTab("chats"));
+    tabWatchdog.addEventListener("click", () => setUiTab("watchdog"));
     function saveLastChat(id) {
       try {
         localStorage.setItem(LS_LAST_CHAT, id);

@@ -35,6 +35,7 @@ npm run dev          # http://127.0.0.1:3847 — server + watch UI
 | `GET /api/status` | Состояние индекса БД (`loading`, `partial`) |
 | `POST /api/refresh` | Пересканировать БД |
 | `GET /api/cursor/snapshot?token=` | CDP snapshot по token (`composerId` — legacy) |
+| `GET /api/session?token=` / `?composerId=` | Session: agent, queue, modal |
 | `GET /api/cursor/snapshot?includeChats=1` | Совместимость: snapshot + список из БД |
 | `GET /api/cursor/events?token=` | SSE: live snapshot |
 | `GET /api/db` | Текущий путь к БД |
@@ -98,6 +99,18 @@ npm run mcp   # stdio (для отладки)
 
 **Revert modal:** CDP не чистит draft (`delete` → resubmit checkpoint). Submit только в **пустой** composer; иначе server queue. Modal → «Continue without reverting» или abort.
 
+## Watchdog
+
+Фоновый daemon: dismiss modals + drain send queue (без HTTP server).
+
+```bash
+npm run watchdog:start
+npm run watchdog:status
+npm run watchdog:stop
+```
+
+Socket: `~/.cursor/cr-watchdog.sock`, UI tab **watchdog**, `GET /api/watchdog/stats`
+
 | Tool | Args | Примечание |
 |------|------|------------|
 | `cursor_agent_register` | — | token в tool result |
@@ -105,6 +118,7 @@ npm run mcp   # stdio (для отладки)
 | `cursor_enqueue_send` | `token`, `text` | очередь |
 | `cursor_send` | `token`, `text`, `queue?`, `queueOnBusy?` | CDP send |
 | `cursor_snapshot` | `token` | live snapshot |
+| `cursor_session` | `token` или `composerId` | agent + queue + modal |
 | `cursor_get_chat` | `token` | сообщения из БД |
 | `cursor_list_chats`, `cursor_db_info`, `cursor_refresh_db` | — | глобальные |
 

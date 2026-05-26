@@ -10,9 +10,20 @@ export interface WatchdogStatsSnapshot {
   polls_total: number;
   modals_dismissed: { pretty_dialog: number; revert: number };
   drain_sent_total: number;
+  slow_recoveries_total: number;
   errors_total: number;
   last_dismiss_at: string | null;
+  last_observe_at: string | null;
   paused: boolean;
+  windows: Array<{
+    windowTitle: string;
+    composerId: string;
+    model: string;
+    busy: boolean;
+    slowCount: number;
+    draftLen: number;
+    draftHasToken: boolean;
+  }>;
 }
 
 const MAX_LOG = 100;
@@ -22,9 +33,12 @@ export class WatchdogStats {
   private polls_total = 0;
   private modals_dismissed = { pretty_dialog: 0, revert: 0 };
   private drain_sent_total = 0;
+  private slow_recoveries_total = 0;
   private errors_total = 0;
   private last_dismiss_at: string | null = null;
+  private last_observe_at: string | null = null;
   private paused = false;
+  private windows: WatchdogStatsSnapshot['windows'] = [];
   private log: WatchdogEvent[] = [];
 
   constructor(startedAt = Date.now()) {
@@ -37,9 +51,12 @@ export class WatchdogStats {
       polls_total: this.polls_total,
       modals_dismissed: { ...this.modals_dismissed },
       drain_sent_total: this.drain_sent_total,
+      slow_recoveries_total: this.slow_recoveries_total,
       errors_total: this.errors_total,
       last_dismiss_at: this.last_dismiss_at,
+      last_observe_at: this.last_observe_at,
       paused: this.paused,
+      windows: this.windows.map((w) => ({ ...w })),
     };
   }
 
@@ -61,6 +78,20 @@ export class WatchdogStats {
   recordDrain(sent: number): void {
     this.drain_sent_total += sent;
     if (sent > 0) this.push('drain', `sent=${sent}`);
+  }
+
+  recordObserve(
+    windows: WatchdogStatsSnapshot['windows'],
+    meta?: Record<string, unknown>
+  ): void {
+    this.windows = windows.map((w) => ({ ...w }));
+    this.last_observe_at = new Date().toISOString();
+    this.push('observe', `windows=${windows.length}`, meta);
+  }
+
+  recordSlowRecover(windowTitle: string, meta?: Record<string, unknown>): void {
+    this.slow_recoveries_total++;
+    this.push('slow_recover', windowTitle, meta);
   }
 
   recordError(message: string, meta?: Record<string, unknown>): void {
