@@ -1,5 +1,6 @@
 import type { CdpTarget } from '../client';
-import { connectCdp, composerPageOrder } from '../client';
+import { composerPageOrder } from '../client';
+import { evalOnPage } from '../live-page';
 import type { ComposerAgentPageProbe } from './composer-agent.v1';
 import {
   COMPOSER_AGENT_PROBE_ID,
@@ -15,15 +16,9 @@ import {
 } from './composer-switch.v1';
 import type { CdpProbeId } from '../port';
 
-async function evalAgentProbe(
-  send: (method: string, params?: Record<string, unknown>) => Promise<unknown>
-): Promise<ReturnType<typeof parseComposerAgentProbeValue>> {
+async function evalAgentProbe(page: CdpTarget) {
   for (const expression of [COMPOSER_AGENT_PROBE_V2_JS, COMPOSER_AGENT_PROBE_JS]) {
-    const r = (await send('Runtime.evaluate', {
-      expression,
-      returnByValue: true,
-    })) as { result?: { value?: unknown } };
-    const v = parseComposerAgentProbeValue(r.result?.value);
+    const v = parseComposerAgentProbeValue(await evalOnPage(page, expression, true));
     if (v) return v;
   }
   return null;
@@ -39,14 +34,8 @@ export async function runProbeOnTargets(
     const out: ComposerAgentPageProbe[] = [];
     for (const page of pages) {
       try {
-        const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
-        try {
-          await send('Runtime.enable');
-          const v = await evalAgentProbe(send);
-          if (v) out.push({ title: page.title, ...v });
-        } finally {
-          close();
-        }
+        const v = await evalAgentProbe(page);
+        if (v) out.push({ title: page.title, ...v });
       } catch {
         /* next window */
       }
@@ -58,18 +47,8 @@ export async function runProbeOnTargets(
     const out: ComposerSwitchValue[] = [];
     for (const page of pages) {
       try {
-        const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
-        try {
-          await send('Runtime.enable');
-          const r = (await send('Runtime.evaluate', {
-            expression: js,
-            returnByValue: true,
-          })) as { result?: { value?: unknown } };
-          const v = parseComposerSwitchValue(r.result?.value);
-          if (v) out.push(v.ok ? { ...v, target: page.title } : v);
-        } finally {
-          close();
-        }
+        const v = parseComposerSwitchValue(await evalOnPage(page, js, true));
+        if (v) out.push(v.ok ? { ...v, target: page.title } : v);
       } catch {
         /* next */
       }

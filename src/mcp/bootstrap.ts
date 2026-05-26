@@ -1,4 +1,3 @@
-import { checkCdpAvailable, cdpBaseUrl } from '../cdp/client';
 import type { CdpPort } from '../cdp/port';
 import { liveCdp } from '../cdp/live-cdp';
 import { ChatStore } from '../chat-store';
@@ -47,10 +46,9 @@ export async function createCrMcpRuntime(opts?: { cdp?: CdpPort }): Promise<CrMc
         partial: st.partial,
       };
     },
-    cdpStatus: async () => ({
-      ok: await checkCdpAvailable(cdpBaseUrl()),
-      url: cdpBaseUrl(),
-    }),
+    cdpStatus: () => cdp.status(),
+    sessionByToken: (token) => cursor.sessionByToken(token),
+    session: (composerId) => cursor.session(composerId),
     dbInfo: () => ({ path: store.dbPath }),
   };
 

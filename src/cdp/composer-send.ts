@@ -1,8 +1,6 @@
-import {
-  connectCdp,
-  pickWorkbenchWithComposer,
-} from './client';
+import { pickWorkbenchWithComposer } from './client';
 import { isFixtureCdp } from './fixture-cdp';
+import { withPage } from './live-page';
 import {
   DISMISS_REVERT_MODAL_JS,
   FOCUS_CLEAR_INPUT_JS,
@@ -86,9 +84,7 @@ async function liveComposerSend(
     throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
   }
 
-  const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
-  try {
-    await send('Runtime.enable');
+  return withPage(page, async (send) => {
 
     const dismissed = await evalModal(send, DISMISS_REVERT_MODAL_JS);
     if (dismissed?.open && dismissed.action === 'continue-without-revert') {
@@ -238,9 +234,7 @@ async function liveComposerSend(
       pageTitle: page.title,
       submitHow: sub.how,
     };
-  } finally {
-    close();
-  }
+  });
 }
 
 export async function runComposerSend(

@@ -1,5 +1,6 @@
-import { connectCdp, workbenchPages } from './client';
+import { workbenchPages } from './client';
 import { DISMISS_PRETTY_DIALOG_JS, DISMISS_REVERT_MODAL_JS } from './composer-input';
+import { evalOnPage, withPage } from './live-page';
 import type { CdpPort, DismissOutcome } from './port';
 
 type EvalJs = (expr: string) => Promise<{
@@ -31,19 +32,21 @@ export async function liveDismissModals(cdp: CdpPort): Promise<DismissOutcome[]>
   const results: DismissOutcome[] = [];
   const targets = workbenchPages(await cdp.listTargets());
   for (const t of targets) {
-    const { send, close } = await connectCdp(t.webSocketDebuggerUrl);
     try {
-      await send('Runtime.enable');
       const evalJs: EvalJs = async (expr) =>
-        (await send('Runtime.evaluate', { expression: expr, returnByValue: true })) as Awaited<
-          ReturnType<EvalJs>
-        >;
+        ({
+          result: {
+            value: (await evalOnPage(t, expr, true)) as {
+              open?: boolean;
+              action?: string;
+              btn?: string;
+            },
+          },
+        }) as Awaited<ReturnType<EvalJs>>;
       const title = t.title?.slice(0, 40) ?? t.id;
       results.push(...(await runDismissOnPage(evalJs, title)));
     } catch {
       /* skip unresponsive window */
-    } finally {
-      close();
     }
   }
   return results;

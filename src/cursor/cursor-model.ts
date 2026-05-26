@@ -88,6 +88,10 @@ export class CursorModel {
     return this.session(target.composerId, { token });
   }
 
+  getPort(): CdpPort {
+    return this.cdp;
+  }
+
   private async resolveSwitch(composerId: string): Promise<ComposerSwitchResult | null> {
     if (!(await this.cdp.isAvailable())) return null;
     const hit = this.switchCache;

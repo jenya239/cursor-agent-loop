@@ -4,7 +4,8 @@ import { COMPOSER_AGENT_PROBE_V2_JS } from './probes/composer-agent.v2';
 import { COMPOSER_AGENT_PROBE_JS, parseComposerAgentProbeValue } from './probes/composer-agent.v1';
 import { isFixtureCdp } from './fixture-cdp';
 import { liveCdp } from './live-cdp';
-import { connectCdp } from './client';
+import type { CdpTarget } from './client';
+import { evalOnPage } from './live-page';
 
 export interface ComposerAgentDetail {
   busy: boolean;
@@ -13,24 +14,12 @@ export interface ComposerAgentDetail {
   windowTitle?: string;
 }
 
-async function evalAgentOnPage(
-  webSocketDebuggerUrl: string
-): Promise<{ busy: boolean; reason: string } | null> {
-  const { send, close } = await connectCdp(webSocketDebuggerUrl);
-  try {
-    await send('Runtime.enable');
-    for (const expression of [COMPOSER_AGENT_PROBE_V2_JS, COMPOSER_AGENT_PROBE_JS]) {
-      const r = (await send('Runtime.evaluate', {
-        expression,
-        returnByValue: true,
-      })) as { result?: { value?: unknown } };
-      const v = parseComposerAgentProbeValue(r.result?.value);
-      if (v) return { busy: v.busy, reason: v.reason };
-    }
-    return null;
-  } finally {
-    close();
+async function evalAgentOnPage(page: CdpTarget): Promise<{ busy: boolean; reason: string } | null> {
+  for (const expression of [COMPOSER_AGENT_PROBE_V2_JS, COMPOSER_AGENT_PROBE_JS]) {
+    const v = parseComposerAgentProbeValue(await evalOnPage(page, expression, true));
+    if (v) return { busy: v.busy, reason: v.reason };
   }
+  return null;
 }
 
 export async function probeComposerAgentWindow(
@@ -59,7 +48,7 @@ export async function probeComposerAgentWindow(
       return { busy: false, cdpOk: false, reason: 'window-not-found' };
     }
     for (const page of pages) {
-      const v = await evalAgentOnPage(page.webSocketDebuggerUrl);
+      const v = await evalAgentOnPage(page);
       if (!v) continue;
       return { busy: v.busy, cdpOk: true, reason: v.reason, windowTitle: page.title };
     }

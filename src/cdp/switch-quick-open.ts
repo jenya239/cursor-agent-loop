@@ -1,4 +1,5 @@
-import { connectCdp, pickWorkbenchWithComposer, type CdpTarget } from './client';
+import { pickWorkbenchWithComposer, type CdpTarget } from './client';
+import { withPage } from './live-page';
 
 /** Fallback: Cmd/Ctrl+P then type chat id/name (v2). */
 export async function switchViaQuickOpen(
@@ -17,9 +18,7 @@ export async function switchViaQuickOpen(
   if (!page) return { ok: false, reason: 'no-window' };
 
   const mod = process.platform === 'darwin' ? 4 : 2;
-  const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
-  try {
-    await send('Runtime.enable');
+  return withPage(page, async (send) => {
     for (const phase of ['keyDown', 'keyUp'] as const) {
       await send('Input.dispatchKeyEvent', {
         type: phase,
@@ -44,8 +43,6 @@ export async function switchViaQuickOpen(
       code: 'Enter',
       windowsVirtualKeyCode: 13,
     });
-    return { ok: true, reason: 'quick-open', switchTarget: page.title };
-  } finally {
-    close();
-  }
+    return { ok: true, reason: 'quick-open', switchTarget: page!.title };
+  });
 }

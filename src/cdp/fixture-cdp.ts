@@ -66,6 +66,10 @@ export class FixtureCdp implements CdpPort {
     return this.scenario !== 'down';
   }
 
+  async status(): Promise<{ ok: boolean; url: string }> {
+    return { ok: await this.isAvailable(), url: 'fixture://cdp' };
+  }
+
   async listTargets(): Promise<CdpTarget[]> {
     if (this.scenario === 'down') {
       throw new Error('fixture cdp unavailable');

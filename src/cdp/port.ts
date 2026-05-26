@@ -25,6 +25,7 @@ export interface DismissOutcome {
 
 export interface CdpPort {
   isAvailable(): Promise<boolean>;
+  status(): Promise<{ ok: boolean; url: string }>;
   listTargets(): Promise<CdpTarget[]>;
   runProbe(
     probeId: typeof COMPOSER_AGENT_PROBE_ID

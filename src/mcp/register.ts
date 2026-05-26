@@ -97,6 +97,13 @@ export function registerCrMcpTools(server: McpServer, deps: CrMcpDeps): void {
 
   server.tool('cursor_cdp_status', 'Check if Cursor remote debugging (CDP) is available', {}, wrap('cursor_cdp_status'));
 
+  server.tool(
+    'cursor_session',
+    'Composer session: agent state, queue, modal (by token or composerId)',
+    { token: z.string().optional(), composerId: z.string().optional() },
+    wrap('cursor_session')
+  );
+
   server.tool('cursor_db_info', 'Current state.vscdb path used by cr', {}, wrap('cursor_db_info'));
 }
 

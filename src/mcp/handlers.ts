@@ -1,3 +1,4 @@
+import type { CursorSession } from '../cursor/session';
 import type { CursorSnapshot } from '../cursor/types';
 import type { ChatDetailView } from '../cursor/types';
 import type { ChatSummary } from '../db/types';
@@ -24,6 +25,7 @@ export const MCP_TOOL_NAMES = [
   'cursor_send_queue_flush',
   'cursor_refresh_db',
   'cursor_cdp_status',
+  'cursor_session',
   'cursor_db_info',
 ] as const;
 
@@ -64,6 +66,8 @@ export interface CrMcpDeps {
     partial: boolean;
   }>;
   cdpStatus(): Promise<{ ok: boolean; url: string }>;
+  sessionByToken(token: string): Promise<CursorSession>;
+  session(composerId: string): Promise<CursorSession>;
   dbInfo(): { path: string };
 }
 
@@ -195,6 +199,18 @@ export function createCrMcpHandlers(deps: CrMcpDeps) {
             return ok(await deps.refreshDb());
           case 'cursor_cdp_status':
             return ok(await deps.cdpStatus());
+          case 'cursor_session': {
+            const token = parseToken(args);
+            const composerId = parseComposerId(args);
+            if (token) {
+              await deps.refreshDb();
+              return ok(await deps.sessionByToken(token));
+            }
+            if (composerId) {
+              return ok(await deps.session(composerId));
+            }
+            return err('token or composerId required');
+          }
           case 'cursor_db_info':
             return ok(deps.dbInfo());
           default:

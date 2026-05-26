@@ -32,4 +32,9 @@ describe('CdpPort extended (fixture)', () => {
     const cdp = new FixtureCdp('idle');
     expect(await cdp.dismissModals()).toEqual([]);
   });
+
+  it('status reflects availability', async () => {
+    expect(await new FixtureCdp('idle').status()).toEqual({ ok: true, url: 'fixture://cdp' });
+    expect(await new FixtureCdp('down').status()).toEqual({ ok: false, url: 'fixture://cdp' });
+  });
 });

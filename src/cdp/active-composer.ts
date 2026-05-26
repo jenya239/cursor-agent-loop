@@ -1,4 +1,5 @@
-import { connectCdp, composerPageOrder, pageHasComposer, workbenchPages, type CdpTarget } from './client';
+import { composerPageOrder, pageHasComposer, workbenchPages, type CdpTarget } from './client';
+import { evalOnPage } from './live-page';
 import type { CdpPort } from './port';
 import { fixtureActiveIdForWindow, isFixtureCdp } from './fixture-cdp';
 import { composerIdsMatch, filterTargetsByHints } from './window-match';
@@ -25,19 +26,9 @@ function score(v: ComposerActiveValue): number {
 }
 
 async function probePage(page: CdpTarget): Promise<(ComposerActiveValue & { windowTitle: string }) | null> {
-  const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
-  try {
-    await send('Runtime.enable');
-    const r = (await send('Runtime.evaluate', {
-      expression: COMPOSER_ACTIVE_PROBE_JS,
-      returnByValue: true,
-    })) as { result?: { value?: unknown } };
-    const v = parseComposerActiveValue(r.result?.value);
-    if (!v) return null;
-    return { ...v, windowTitle: page.title || '' };
-  } finally {
-    close();
-  }
+  const v = parseComposerActiveValue(await evalOnPage(page, COMPOSER_ACTIVE_PROBE_JS, true));
+  if (!v) return null;
+  return { ...v, windowTitle: page.title || '' };
 }
 
 async function pickBestAmongPages(

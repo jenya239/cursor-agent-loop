@@ -34,6 +34,36 @@ const stub: CrMcpDeps = {
   drainSendQueue: async () => ({ sent: 0, remaining: 0 }),
   refreshDb: async () => ({ ready: true, count: 0, loading: false, partial: false }),
   cdpStatus: async () => ({ ok: false, url: '' }),
+  sessionByToken: async () => ({
+    composerId: 'x',
+    agent: {
+      phase: 'unknown',
+      busy: false,
+      dbBusy: false,
+      cdpBusy: false,
+      cdpOk: false,
+      at: 0,
+      composerId: 'x',
+    },
+    queueLength: 0,
+    modal: 'none',
+    at: 0,
+  }),
+  session: async (composerId) => ({
+    composerId,
+    agent: {
+      phase: 'unknown',
+      busy: false,
+      dbBusy: false,
+      cdpBusy: false,
+      cdpOk: false,
+      at: 0,
+      composerId,
+    },
+    queueLength: 0,
+    modal: 'none',
+    at: 0,
+  }),
   dbInfo: () => ({ path: '/tmp/x.vscdb' }),
 };
 

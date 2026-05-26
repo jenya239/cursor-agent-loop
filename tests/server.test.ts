@@ -89,6 +89,37 @@ describe('HTTP API', () => {
     expect(res.body.chats.length).toBeGreaterThan(0);
   });
 
+  it('GET /api/cdp/status', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app).get('/api/cdp/status');
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.url).toBe('fixture://cdp');
+  });
+
+  it('GET /api/session by token', async () => {
+    seedToken();
+    await store.refresh();
+    const app = createApp(store, noCdp);
+    const res = await request(app).get(`/api/session?token=${TOKEN}`);
+    expect(res.status).toBe(200);
+    expect(res.body.composerId).toBe(COMPOSER_ID);
+    expect(res.body.token).toBe(TOKEN);
+  });
+
+  it('GET /api/session by composerId', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app).get(`/api/session?composerId=${COMPOSER_ID}`);
+    expect(res.status).toBe(200);
+    expect(res.body.composerId).toBe(COMPOSER_ID);
+  });
+
+  it('GET /api/session 400 without params', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app).get('/api/session');
+    expect(res.status).toBe(400);
+  });
+
   it('GET /api/db', async () => {
     const app = createApp(store, noCdp);
     const res = await request(app).get('/api/db');

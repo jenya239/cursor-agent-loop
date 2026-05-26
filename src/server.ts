@@ -3,7 +3,6 @@ import path from 'path';
 import { CursorDbReader } from './db/reader';
 import { globalDbPath } from './db/paths';
 import { ChatStore } from './chat-store';
-import { checkCdpAvailable, cdpBaseUrl } from './cdp/client';
 import { CursorModel } from './cursor/cursor-model';
 import type { CdpPort } from './cdp/port';
 import { liveCdp } from './cdp/live-cdp';
@@ -28,7 +27,8 @@ export function createApp(
 ): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
-  const cursor = opts?.cursor ?? new CursorModel(store, opts?.cdp ?? liveCdp);
+  const cdp = opts?.cdp ?? liveCdp;
+  const cursor = opts?.cursor ?? new CursorModel(store, cdp);
   if (opts?.sendQueueDrain !== false) {
     startSendQueueDrain(cursor);
   }
@@ -44,8 +44,26 @@ export function createApp(
   });
 
   app.get('/api/cdp/status', async (_req, res) => {
-    const url = cdpBaseUrl();
-    res.json({ ok: await checkCdpAvailable(url), url });
+    res.json(await cdp.status());
+  });
+
+  app.get('/api/session', async (req, res) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined;
+    const composerId =
+      typeof req.query.composerId === 'string' ? req.query.composerId : undefined;
+    try {
+      if (token) {
+        res.json(await cursor.sessionByToken(token));
+        return;
+      }
+      if (composerId) {
+        res.json(await cursor.session(composerId));
+        return;
+      }
+      res.status(400).json({ error: 'token or composerId required' });
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+    }
   });
 
   app.get('/api/cursor/snapshot', async (req, res) => {

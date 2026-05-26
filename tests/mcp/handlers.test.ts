@@ -27,7 +27,9 @@ function depsFrom(store: ChatStore, cdp = CursorMock.port('idle')): CrMcpDeps {
       const st = store.status();
       return { ready: st.ready, count: st.count, loading: st.loading, partial: st.partial };
     },
-    cdpStatus: async () => ({ ok: true, url: 'http://127.0.0.1:9226' }),
+    cdpStatus: async () => cdp.status(),
+    sessionByToken: (token) => cursor.sessionByToken(token),
+    session: (composerId) => cursor.session(composerId),
     dbInfo: () => ({ path: store.dbPath }),
   };
 }
@@ -53,6 +55,7 @@ describe('MCP handlers', () => {
     expect(MCP_TOOL_NAMES).toContain('cursor_agent_register');
     expect(MCP_TOOL_NAMES).toContain('cursor_agent_resolve');
     expect(MCP_TOOL_NAMES).toContain('cursor_enqueue_send');
+    expect(MCP_TOOL_NAMES).toContain('cursor_session');
     expect(MCP_TOOL_NAMES).not.toContain('cursor_enqueue_self');
     expect(MCP_TOOL_NAMES).not.toContain('cursor_active_composer');
   });
@@ -106,6 +109,25 @@ describe('MCP handlers', () => {
     expect(r.isError).toBeFalsy();
     const body = JSON.parse(r.text);
     expect(body.text).toBe('q');
+  });
+
+  it('cursor_session by token', async () => {
+    const db = new Database(dbPath);
+    seedRegisterBubble(db, COMPOSER_ID, TOKEN);
+    db.close();
+    await store.refresh();
+    const h = createCrMcpHandlers(depsFrom(store));
+    const r = await h.handleTool('cursor_session', { token: TOKEN });
+    expect(r.isError).toBeFalsy();
+    const body = JSON.parse(r.text);
+    expect(body.composerId).toBe(COMPOSER_ID);
+    expect(body.token).toBe(TOKEN);
+  });
+
+  it('cursor_session requires token or composerId', async () => {
+    const h = createCrMcpHandlers(depsFrom(store));
+    const r = await h.handleTool('cursor_session', {});
+    expect(r.isError).toBe(true);
   });
 
   it('unknown tool is error', async () => {

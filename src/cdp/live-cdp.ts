@@ -16,6 +16,10 @@ export class LiveCdp implements CdpPort {
     return checkCdpAvailable(this.base);
   }
 
+  async status(): Promise<{ ok: boolean; url: string }> {
+    return { ok: await this.isAvailable(), url: this.base };
+  }
+
   async listTargets() {
     return listTargets(this.base);
   }
