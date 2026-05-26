@@ -13,7 +13,7 @@ import { isAgentBusySendError } from './send-queue';
 
 export type SendHandler = (
   text: string,
-  composerId?: string,
+  token: string,
   windowTitle?: string
 ) => Promise<{ ok: true; text: string; pageTitle?: string }>;
 
@@ -34,8 +34,8 @@ export function createApp(
   }
   const send =
     opts?.send ??
-    (async (text: string, composerId?: string, windowTitle?: string) => {
-      const r = await cursor.send(text, { composerId, windowTitle });
+    (async (text: string, token: string, windowTitle?: string) => {
+      const r = await cursor.send(text, { token, windowTitle });
       return { ok: true, text: r.text, pageTitle: r.pageTitle };
     });
 
@@ -49,11 +49,20 @@ export function createApp(
   });
 
   app.get('/api/cursor/snapshot', async (req, res) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined;
     const composerId =
       typeof req.query.composerId === 'string' ? req.query.composerId : undefined;
     const includeChats =
       req.query.includeChats === '1' || req.query.includeChats === 'true';
-    res.json(await cursor.snapshot(composerId, { includeChats }));
+    try {
+      if (token) {
+        res.json(await cursor.snapshotByToken(token, { includeChats }));
+        return;
+      }
+      res.json(await cursor.snapshot(composerId, { includeChats }));
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+    }
   });
 
   app.get('/api/db', (_req, res) => {
@@ -66,6 +75,7 @@ export function createApp(
 
   const sseMs = Number(process.env.SNAPSHOT_SSE_MS) || 800;
   app.get('/api/cursor/events', async (req, res) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined;
     const composerId =
       typeof req.query.composerId === 'string' ? req.query.composerId : undefined;
     res.setHeader('Content-Type', 'text/event-stream');
@@ -79,7 +89,9 @@ export function createApp(
     const push = async () => {
       if (closed) return;
       try {
-        const snap = await cursor.snapshot(composerId);
+        const snap = token
+          ? await cursor.snapshotByToken(token)
+          : await cursor.snapshot(composerId);
         res.write(`data: ${JSON.stringify(snap)}\n\n`);
       } catch {
         /* skip tick */
@@ -94,8 +106,7 @@ export function createApp(
 
   app.post('/api/send', async (req, res) => {
     const text = typeof req.body?.text === 'string' ? req.body.text : '';
-    const composerId =
-      typeof req.body?.composerId === 'string' ? req.body.composerId : undefined;
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const windowTitle =
       typeof req.body?.windowTitle === 'string' ? req.body.windowTitle : undefined;
     const queue = req.body?.queue === true || req.body?.queue === 'true';
@@ -104,9 +115,13 @@ export function createApp(
       res.status(400).json({ error: 'text required' });
       return;
     }
+    if (!token) {
+      res.status(400).json({ error: 'token required' });
+      return;
+    }
     if (queue) {
       try {
-        const item = await cursor.enqueueSend(trimmed, { composerId, windowTitle });
+        const item = await cursor.enqueueSend(trimmed, { token, windowTitle });
         res.status(202).json({
           ok: true,
           queued: true,
@@ -131,12 +146,12 @@ export function createApp(
     sendBusy = true;
     lastServerSend = { text: trimmed, at: now };
     try {
-      const result = await send(trimmed, composerId, windowTitle);
+      const result = await send(trimmed, token, windowTitle);
       res.json(result);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (req.body?.queueOnBusy && isAgentBusySendError(msg)) {
-        const item = await cursor.enqueueSend(trimmed, { composerId, windowTitle });
+        const item = await cursor.enqueueSend(trimmed, { token, windowTitle });
         res.status(202).json({
           ok: true,
           queued: true,
@@ -161,12 +176,15 @@ export function createApp(
 
   app.post('/api/send/queue', async (req, res) => {
     const text = typeof req.body?.text === 'string' ? req.body.text : '';
-    const composerId =
-      typeof req.body?.composerId === 'string' ? req.body.composerId : undefined;
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const windowTitle =
       typeof req.body?.windowTitle === 'string' ? req.body.windowTitle : undefined;
+    if (!token) {
+      res.status(400).json({ error: 'token required' });
+      return;
+    }
     try {
-      const item = await cursor.enqueueSend(text, { composerId, windowTitle });
+      const item = await cursor.enqueueSend(text, { token, windowTitle });
       res.status(202).json({
         ok: true,
         queued: true,

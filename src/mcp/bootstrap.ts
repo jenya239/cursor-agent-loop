@@ -13,27 +13,6 @@ export interface CrMcpRuntime {
   close(): void;
 }
 
-/** DB-only chat read — no CDP (MCP must stay fast and not crash on probe). */
-function getChatFromStore(store: ChatStore, composerId: string, fresh = false) {
-  if (!store.reader.getComposerData(composerId)) return null;
-  const { summary, messages, agentBusy, agentStatus } = store.getChat(composerId, fresh);
-  const busy = agentBusy;
-  return {
-    summary: summary ?? { composerId, name: 'Untitled' },
-    composerId,
-    messages,
-    agent: {
-      phase: busy ? ('busy' as const) : ('idle' as const),
-      busy,
-      dbBusy: busy,
-      cdpBusy: false,
-      cdpOk: false,
-      dbStatus: agentStatus,
-      at: Date.now(),
-    },
-  };
-}
-
 export async function createCrMcpRuntime(opts?: { cdp?: CdpPort }): Promise<CrMcpRuntime> {
   const dbPath = process.env.CURSOR_DB || globalDbPath();
   const reader = CursorDbReader.fromPath(dbPath, { copy: process.env.COPY_DB === '1' });
@@ -50,10 +29,12 @@ export async function createCrMcpRuntime(opts?: { cdp?: CdpPort }): Promise<CrMc
 
   const deps: CrMcpDeps = {
     listChats: () => store.getChats(),
-    getChat: async (id, fresh) => getChatFromStore(store, id, fresh),
-    snapshot: (id, o) => cursor.snapshot(id, o),
+    getChatByToken: (token, fresh) => cursor.getChatByToken(token, fresh),
+    snapshotByToken: (token, o) => cursor.snapshotByToken(token, o),
     send: (text, o) => cursor.send(text, o),
     enqueueSend: (text, o) => cursor.enqueueSend(text, o),
+    registerAgentToken: (opts) => cursor.registerAgentToken(opts),
+    resolveAgentToken: (token, composerId) => cursor.resolveAgentToken(token, composerId),
     listSendQueue: () => cursor.listSendQueue(),
     drainSendQueue: () => cursor.drainSendQueue(),
     refreshDb: async () => {

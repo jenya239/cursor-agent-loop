@@ -6,7 +6,7 @@ import {
   COMPOSER_AGENT_PROBE_JS,
   parseComposerAgentProbeValue,
 } from './composer-agent.v1';
-import { COMPOSER_AGENT_PROBE_JS as COMPOSER_AGENT_PROBE_V2_JS } from './composer-agent.v2';
+import { COMPOSER_AGENT_PROBE_V2_JS } from './composer-agent.v2';
 import {
   COMPOSER_SWITCH_PROBE_ID,
   buildComposerSwitchJs,
@@ -32,9 +32,9 @@ async function evalAgentProbe(
 export async function runProbeOnTargets(
   probeId: CdpProbeId,
   targets: CdpTarget[],
-  params?: { composerId?: string; chatName?: string }
+  params?: { composerId?: string; chatName?: string; pages?: CdpTarget[] }
 ): Promise<ComposerAgentPageProbe[] | ComposerSwitchValue[]> {
-  const pages = composerPageOrder(targets);
+  const pages = params?.pages ?? composerPageOrder(targets);
   if (probeId === COMPOSER_AGENT_PROBE_ID) {
     const out: ComposerAgentPageProbe[] = [];
     for (const page of pages) {

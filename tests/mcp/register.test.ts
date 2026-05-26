@@ -5,8 +5,8 @@ import type { CrMcpDeps } from '../../src/mcp/handlers';
 
 const stub: CrMcpDeps = {
   listChats: () => ({ chats: [], partial: false }),
-  getChat: async () => null,
-  snapshot: async () => ({
+  getChatByToken: async () => null,
+  snapshotByToken: async () => ({
     at: 0,
     cdp: { ok: false },
     windows: [],
@@ -23,6 +23,13 @@ const stub: CrMcpDeps = {
   }),
   send: async (text) => ({ ok: true, text, pageTitle: 'x' }),
   enqueueSend: async (text) => ({ id: '1', text, position: 0, native: true }),
+  registerAgentToken: async () => ({
+    token: 'cr-agent-11111111-1111-1111-1111-111111111111',
+    kind: 'cr-agent-token',
+    v: 1,
+    hint: 'x',
+  }),
+  resolveAgentToken: async () => null,
   listSendQueue: () => [],
   drainSendQueue: async () => ({ sent: 0, remaining: 0 }),
   refreshDb: async () => ({ ready: true, count: 0, loading: false, partial: false }),

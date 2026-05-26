@@ -21,13 +21,19 @@ export const COMPOSER_AGENT_PROBE_JS = `(() => {
   const bar = document.querySelector('.composer-bar');
   if (!bar) return { busy: false, reason: 'no-bar', controls: [] };
   const root = bar.closest('.composer-bar-container') || bar;
-  const send = root.querySelector(
-    'button.composer-send-button, [data-testid="composer-send-button"]'
+  const agentsSend = root.querySelector(
+    'button.ui-prompt-input-submit-button, [class*="ui-prompt-input-submit-button"]'
   );
+  const agentsAria = agentsSend?.getAttribute('aria-label') || '';
+  const send =
+    root.querySelector('button.composer-send-button, [data-testid="composer-send-button"]') ||
+    (!/stop|cancel|abort|останов/i.test(agentsAria) ? agentsSend : null);
   const stopBtn =
     root.querySelector(
       '.codicon-debug-stop, [aria-label*="Stop" i], [aria-label*="останов" i], button.composer-stop-button'
-    ) || bar.querySelector('.codicon-debug-stop');
+    ) ||
+    bar.querySelector('.codicon-debug-stop') ||
+    (/stop|cancel|abort|останов/i.test(agentsAria) ? agentsSend : null);
   const controls = [];
   const add = (role, el) => {
     if (!el) return;

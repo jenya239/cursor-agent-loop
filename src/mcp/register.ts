@@ -16,6 +16,20 @@ export function registerCrMcpTools(server: McpServer, deps: CrMcpDeps): void {
   };
 
   server.tool(
+    'cursor_agent_register',
+    'Issue agent token; binds to composerId arg, CR_AGENT_COMPOSER_ID, or CDP active composer',
+    { composerId: z.string().optional() },
+    wrap('cursor_agent_register')
+  );
+
+  server.tool(
+    'cursor_agent_resolve',
+    'Resolve token to composerId from vscdb, server bind, or composerId arg',
+    { token: z.string(), composerId: z.string().optional() },
+    wrap('cursor_agent_resolve')
+  );
+
+  server.tool(
     'cursor_list_chats',
     'List Cursor composer chats from state.vscdb (default limit 50)',
     {
@@ -28,9 +42,9 @@ export function registerCrMcpTools(server: McpServer, deps: CrMcpDeps): void {
 
   server.tool(
     'cursor_get_chat',
-    'Get chat messages from DB (no CDP; use messageLimit for long chats)',
+    'Get chat messages by agent token',
     {
-      composerId: z.string(),
+      token: z.string(),
       fresh: z.boolean().optional(),
       messageLimit: z.number().optional(),
     },
@@ -39,31 +53,33 @@ export function registerCrMcpTools(server: McpServer, deps: CrMcpDeps): void {
 
   server.tool(
     'cursor_snapshot',
-    'Live CDP snapshot: windows, agent busy, composer switch (no chat list by default)',
-    { composerId: z.string().optional(), includeChats: z.boolean().optional() },
+    'Live CDP snapshot for composer identified by token',
+    { token: z.string(), includeChats: z.boolean().optional() },
     wrap('cursor_snapshot')
   );
 
   server.tool(
     'cursor_send',
-    'Send via CDP; queue=true to enqueue; queueOnBusy auto-enqueue when agent busy',
+    'Send; busy → server queue (deferred). immediate:true for CDP while busy (modal risk)',
     {
+      token: z.string(),
       text: z.string(),
-      composerId: z.string().optional(),
       windowTitle: z.string().optional(),
+      composerId: z.string().optional(),
       queue: z.boolean().optional(),
-      queueOnBusy: z.boolean().optional(),
+      immediate: z.boolean().optional(),
     },
     wrap('cursor_send')
   );
 
   server.tool(
     'cursor_enqueue_send',
-    'Queue in native Cursor composer (type+submit while agent busy); server fallback if CDP fails',
+    'Queue message to composer identified by token',
     {
+      token: z.string(),
       text: z.string(),
-      composerId: z.string().optional(),
       windowTitle: z.string().optional(),
+      composerId: z.string().optional(),
     },
     wrap('cursor_enqueue_send')
   );
@@ -89,7 +105,7 @@ export function createCrMcpServer(deps: CrMcpDeps): McpServer {
     { name: 'cr-cursor', version: '0.1.0' },
     {
       instructions:
-        'Chats and messages come from state.vscdb (cursor_list_chats, cursor_get_chat). Live Cursor UI state via cursor_snapshot and cursor_send (needs CDP). Prefer cursor_list_chats over snapshot for chat lists.',
+        'Agent identity: 1) cursor_agent_register 2) cursor_agent_resolve(token) 3) cursor_enqueue_send/send/snapshot/get_chat with token. Register binds token to active composer immediately; vscdb needed for cross-session resolve.',
     }
   );
   registerCrMcpTools(server, deps);

@@ -33,7 +33,8 @@ export async function listTargets(base = cdpBaseUrl()): Promise<CdpTarget[]> {
   return fetchJson<CdpTarget[]>(`${base}/json`);
 }
 
-const SKIP_TITLE = /settings|walkthrough|welcome|release notes/i;
+/** Do not skip "Cursor Settings - workspace - Cursor" — composer sidebar is still in workbench. */
+const SKIP_TITLE = /walkthrough|welcome|release notes/i;
 
 export function workbenchPages(targets: CdpTarget[]): CdpTarget[] {
   return targets.filter(
@@ -78,7 +79,26 @@ export function composerPageOrder(targets: CdpTarget[]): CdpTarget[] {
   return [...pages].sort((a, b) => score(a) - score(b));
 }
 
-const HAS_COMPOSER_JS = `!!document.querySelector(".composer-bar [contenteditable='true'], .composer-bar [contenteditable=true]")`;
+export const HAS_COMPOSER_JS = `!!(
+  document.querySelector(".composer-bar [contenteditable='true'], .composer-bar [contenteditable=true]") ||
+  document.querySelector(".ui-prompt-input-editor__input[contenteditable='true'], .ui-prompt-input [contenteditable='true']")
+)`;
+
+export async function pageHasComposer(page: CdpTarget): Promise<boolean> {
+  const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
+  try {
+    await send('Runtime.enable');
+    const r = (await send('Runtime.evaluate', {
+      expression: HAS_COMPOSER_JS,
+      returnByValue: true,
+    })) as { result?: { value?: boolean } };
+    return !!r.result?.value;
+  } catch {
+    return false;
+  } finally {
+    close();
+  }
+}
 
 export async function pickWorkbenchWithComposer(
   targets: CdpTarget[]

@@ -19,10 +19,12 @@ describe('composer-switch.v1', () => {
   it('switch-ok fixture scenario', async () => {
     const { FixtureCdp } = await import('../../src/cdp/fixture-cdp');
     const cdp = new FixtureCdp('switch-ok');
-    const r = await cdp.switchComposer('id', { chatName: 'Test' });
+    const r = await cdp.switchComposer('11111111-1111-1111-1111-111111111111', {
+      workspaceHints: ['cr'],
+    });
     expect(r.ok).toBe(true);
-    expect(r.reason).toBe('history-name');
-    expect(r.switchTarget).toBeDefined();
+    expect(r.reason).toBe('verified');
+    expect(r.switchTarget).toContain('cr - cr');
   });
 
   it('buildComposerSwitchJs embeds id', () => {

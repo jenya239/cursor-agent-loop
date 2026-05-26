@@ -1,9 +1,13 @@
 import request from 'supertest';
+import Database from 'better-sqlite3';
 import { CursorDbReader } from '../src/db/reader';
 import { createApp } from '../src/server';
 import { ChatStore } from '../src/chat-store';
 import { CursorMock } from '../src/cdp/cursor-mock';
 import { createTestDb, removeTestDb, COMPOSER_ID, BUSY_COMPOSER_ID } from './fixture';
+import { seedRegisterBubble } from './fixtures/agent-token-db';
+
+const TOKEN = 'cr-agent-cccccccc-cccc-cccc-cccc-cccccccccccc';
 
 const noCdp = { cdp: CursorMock.port('idle'), sendQueueDrain: false };
 
@@ -18,6 +22,11 @@ describe('HTTP API', () => {
     store = new ChatStore(reader, dbPath, true);
     await store.refresh();
   });
+
+  function seedToken(db = new Database(dbPath)) {
+    seedRegisterBubble(db, COMPOSER_ID, TOKEN);
+    db.close();
+  }
 
   afterEach(() => {
     reader.close();
@@ -88,23 +97,29 @@ describe('HTTP API', () => {
   });
 
   it('POST /api/send/queue enqueues', async () => {
+    seedToken();
+    await store.refresh();
     const app = createApp(store, noCdp);
     const res = await request(app)
       .post('/api/send/queue')
-      .send({ text: 'later', composerId: BUSY_COMPOSER_ID });
+      .send({ text: 'later', token: TOKEN });
     expect(res.status).toBe(202);
     expect(res.body.queued).toBe(true);
-    expect(res.body.native).toBe(true);
+    expect(res.body.native).toBe(false);
     const list = await request(app).get('/api/send/queue');
-    expect(list.body.items).toHaveLength(0);
+    expect(list.body.items).toHaveLength(1);
   });
 
   it('POST /api/send validates text', async () => {
+    seedToken();
+    await store.refresh();
     jest.useFakeTimers({ legacyFakeTimers: true });
-    const app = createApp(store, { ...noCdp, send: async (t) => ({ ok: true, text: t }) });
+    const app = createApp(store, { ...noCdp, send: async (t, _token) => ({ ok: true, text: t }) });
     const bad = await request(app).post('/api/send').send({ text: '  ' });
     expect(bad.status).toBe(400);
-    const ok = await request(app).post('/api/send').send({ text: 'hi' });
+    const noToken = await request(app).post('/api/send').send({ text: 'hi' });
+    expect(noToken.status).toBe(400);
+    const ok = await request(app).post('/api/send').send({ text: 'hi', token: TOKEN });
     expect(ok.status).toBe(200);
     expect(ok.body.text).toBe('hi');
     jest.runAllTimers();

@@ -34,11 +34,11 @@ npm run dev          # http://127.0.0.1:3847 — server + watch UI
 | `GET /api/chats/:id?fresh=1` | Сообщения чата из БД |
 | `GET /api/status` | Состояние индекса БД (`loading`, `partial`) |
 | `POST /api/refresh` | Пересканировать БД |
-| `GET /api/cursor/snapshot?composerId=` | CDP, agent, switch (без `chats` по умолчанию) |
+| `GET /api/cursor/snapshot?token=` | CDP snapshot по token (`composerId` — legacy) |
 | `GET /api/cursor/snapshot?includeChats=1` | Совместимость: snapshot + список из БД |
-| `GET /api/cursor/events?composerId=` | SSE: live snapshot (CDP/agent) |
+| `GET /api/cursor/events?token=` | SSE: live snapshot |
 | `GET /api/db` | Текущий путь к БД |
-| `POST /api/send` | `{ "text", "composerId?", "windowTitle?" }` |
+| `POST /api/send` | `{ "text", "token", "windowTitle?" }` |
 
 ## Switch composer
 
@@ -87,3 +87,25 @@ npm run mcp   # stdio (для отладки)
 Регистрация в Cursor: [`.cursor/mcp.json`](.cursor/mcp.json) (`cr-cursor`). После `npm run build` перезагрузите MCP в Cursor (Settings → MCP).
 
 Требования те же: `state.vscdb`, CDP для send/snapshot.
+
+**Идентификация агента (token):**
+
+1. `cursor_agent_register` → token в tool result (Cursor пишет в bubble чата в `state.vscdb`)
+2. Следующее сообщение: `cursor_agent_resolve({ token })` → `composerId`
+3. `cursor_enqueue_send` / `cursor_send` / `cursor_get_chat` / `cursor_snapshot` — всё с **`token`**
+
+Забыл token → новый `register`.
+
+**Revert modal:** CDP не чистит draft (`delete` → resubmit checkpoint). Submit только в **пустой** composer; иначе server queue. Modal → «Continue without reverting» или abort.
+
+| Tool | Args | Примечание |
+|------|------|------------|
+| `cursor_agent_register` | — | token в tool result |
+| `cursor_agent_resolve` | `token` | composerId из истории чата |
+| `cursor_enqueue_send` | `token`, `text` | очередь |
+| `cursor_send` | `token`, `text`, `queue?`, `queueOnBusy?` | CDP send |
+| `cursor_snapshot` | `token` | live snapshot |
+| `cursor_get_chat` | `token` | сообщения из БД |
+| `cursor_list_chats`, `cursor_db_info`, `cursor_refresh_db` | — | глобальные |
+
+**Чужой workspace:** switch только в окне с `workspaceLabel`/`workspacePath` из БД; после switch проверяется `composerId` в DOM (`switch-mismatch` вместо тихого nord).

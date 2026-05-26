@@ -4,6 +4,7 @@ export interface QueuedSend {
   id: string;
   at: number;
   text: string;
+  token?: string;
   composerId?: string;
   windowTitle?: string;
 }
@@ -13,7 +14,7 @@ export class SendQueue {
 
   enqueue(
     text: string,
-    opts?: { composerId?: string; windowTitle?: string }
+    opts?: { token?: string; composerId?: string; windowTitle?: string }
   ): QueuedSend {
     const trimmed = text.trim();
     if (!trimmed) throw new Error('empty message');
@@ -22,6 +23,7 @@ export class SendQueue {
       at: Date.now(),
       text: trimmed,
       composerId: opts?.composerId,
+      token: opts?.token,
       windowTitle: opts?.windowTitle,
     };
     this.items.push(item);
@@ -50,5 +52,10 @@ export class SendQueue {
 }
 
 export function isAgentBusySendError(message: string): boolean {
-  return message.includes('агент сейчас работает');
+  return (
+    message.includes('агент сейчас работает') ||
+    message.includes('composer submit failed') ||
+    message.includes('revert modal') ||
+    message.includes('composer not empty')
+  );
 }

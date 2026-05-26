@@ -12,5 +12,12 @@
     "type": "page",
     "url": "vscode-file://vscode-app/usr/share/cursor/resources/app/out/vs/code/electron-sandbox/workbench/workbench.html",
     "webSocketDebuggerUrl": "ws://fixture/nord"
+  },
+  {
+    "id": "page-mlc",
+    "title": "plan.md - mlc - Cursor",
+    "type": "page",
+    "url": "vscode-file://vscode-app/usr/share/cursor/resources/app/out/vs/code/electron-sandbox/workbench/workbench.html",
+    "webSocketDebuggerUrl": "ws://fixture/mlc"
   }
 ]

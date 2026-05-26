@@ -1,6 +1,7 @@
 import type { CursorSnapshot } from '../cursor/types';
 import type { ChatDetailView } from '../cursor/types';
 import type { ChatSummary } from '../db/types';
+import type { AgentResolve } from '../cursor/resolve-agent-token';
 import {
   MCP_DEFAULT_LIST_LIMIT,
   MCP_DEFAULT_MSG_LIMIT,
@@ -12,6 +13,8 @@ import {
 } from './serialize';
 
 export const MCP_TOOL_NAMES = [
+  'cursor_agent_register',
+  'cursor_agent_resolve',
   'cursor_list_chats',
   'cursor_get_chat',
   'cursor_snapshot',
@@ -26,21 +29,32 @@ export const MCP_TOOL_NAMES = [
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
 
+function parseToken(args: Record<string, unknown>): string | null {
+  const t = typeof args.token === 'string' ? args.token.trim() : '';
+  return t || null;
+}
+
+function parseComposerId(args: Record<string, unknown>): string | undefined {
+  const c = typeof args.composerId === 'string' ? args.composerId.trim() : '';
+  return c || undefined;
+}
+
 export interface CrMcpDeps {
   listChats(): { chats: ChatSummary[]; partial: boolean };
-  getChat(composerId: string, fresh?: boolean): Promise<ChatDetailView | null>;
-  snapshot(
-    composerId?: string,
-    opts?: { includeChats?: boolean }
-  ): Promise<CursorSnapshot>;
+  getChatByToken(token: string, fresh?: boolean): Promise<ChatDetailView | null>;
+  snapshotByToken(token: string, opts?: { includeChats?: boolean }): Promise<CursorSnapshot>;
   send(
     text: string,
-    opts?: { composerId?: string; windowTitle?: string }
+    opts: { token: string; windowTitle?: string; composerId?: string }
   ): Promise<{ ok: true; text: string; pageTitle: string }>;
   enqueueSend(
     text: string,
-    opts?: { composerId?: string; windowTitle?: string }
+    opts: { token: string; windowTitle?: string; composerId?: string }
   ): Promise<{ id: string; position: number; text: string; native?: boolean; pageTitle?: string }>;
+  registerAgentToken(opts?: {
+    composerId?: string;
+  }): Promise<{ token: string; kind: string; v: number; hint: string; composerId?: string }>;
+  resolveAgentToken(token: string, composerId?: string): Promise<AgentResolve | null>;
   listSendQueue(): import('../send-queue').QueuedSend[];
   drainSendQueue(): Promise<{ sent: number; remaining: number; lastPageTitle?: string }>;
   refreshDb(): Promise<{
@@ -71,6 +85,20 @@ export function createCrMcpHandlers(deps: CrMcpDeps) {
     async handleTool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
       try {
         switch (name as McpToolName) {
+          case 'cursor_agent_register':
+            return ok(await deps.registerAgentToken({ composerId: parseComposerId(args) }));
+          case 'cursor_agent_resolve': {
+            const token = parseToken(args);
+            if (!token) return err('token required');
+            await deps.refreshDb();
+            const resolved = await deps.resolveAgentToken(token, parseComposerId(args));
+            if (!resolved) {
+              return err(
+                'token not found in any chat history — wait until cursor_agent_register result appears in this chat, then retry'
+              );
+            }
+            return ok(resolved);
+          }
           case 'cursor_list_chats': {
             const { chats, partial } = deps.listChats();
             const ws = typeof args.workspace === 'string' ? args.workspace : '';
@@ -95,16 +123,22 @@ export function createCrMcpHandlers(deps: CrMcpDeps) {
             });
           }
           case 'cursor_get_chat': {
-            const composerId = String(args.composerId || '');
-            if (!composerId) return err('composerId required');
+            const token = parseToken(args);
+            if (!token) return err('token required');
             const fresh = args.fresh === true || args.fresh === 'true';
-            const view = await deps.getChat(composerId, fresh);
-            if (!view) return err('chat not found');
+            await deps.refreshDb();
+            const view = await deps.getChatByToken(token, fresh);
+            if (!view) {
+              return err(
+                'token not found in chat history — register first or wait for register result in DB'
+              );
+            }
             const messageLimit = parseLimit(args.messageLimit, MCP_DEFAULT_MSG_LIMIT, 500);
             const { messages, total, truncated } = trimMessages(view.messages, messageLimit);
             return ok({
               summary: view.summary,
               composerId: view.composerId,
+              token,
               messages,
               agent: view.agent,
               messageTotal: total,
@@ -112,11 +146,12 @@ export function createCrMcpHandlers(deps: CrMcpDeps) {
             });
           }
           case 'cursor_snapshot': {
-            const composerId =
-              typeof args.composerId === 'string' ? args.composerId : undefined;
+            const token = parseToken(args);
+            if (!token) return err('token required');
             const includeChats =
               args.includeChats === true || args.includeChats === 'true' || args.includeChats === 1;
-            const snap = await deps.snapshot(composerId, { includeChats });
+            await deps.refreshDb();
+            const snap = await deps.snapshotByToken(token, { includeChats });
             if (snap.chats && snap.chats.length > MCP_MAX_LIST_LIMIT) {
               snap.chats = snap.chats.slice(0, MCP_MAX_LIST_LIMIT);
               (snap as { chatsTruncated?: boolean }).chatsTruncated = true;
@@ -126,37 +161,31 @@ export function createCrMcpHandlers(deps: CrMcpDeps) {
           case 'cursor_send': {
             const text = typeof args.text === 'string' ? args.text.trim() : '';
             if (!text) return err('text required');
-            const composerId =
-              typeof args.composerId === 'string' ? args.composerId : undefined;
+            const token = parseToken(args);
+            if (!token) return err('token required');
             const windowTitle =
               typeof args.windowTitle === 'string' ? args.windowTitle : undefined;
-            if (args.queue === true || args.queue === 'true') {
-              return ok(await deps.enqueueSend(text, { composerId, windowTitle }));
-            }
-            try {
-              return ok(await deps.send(text, { composerId, windowTitle }));
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
-              if (
-                (args.queueOnBusy === true || args.queueOnBusy === 'true') &&
-                msg.includes('агент сейчас работает')
-              ) {
-                return ok(await deps.enqueueSend(text, { composerId, windowTitle }));
+            const composerId = parseComposerId(args);
+            const immediate = args.immediate === true || args.immediate === 'true';
+            if (immediate && args.queue !== true && args.queue !== 'true') {
+              try {
+                return ok(await deps.send(text, { token, windowTitle, composerId }));
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                return err(msg);
               }
-              return err(msg);
             }
+            return ok(await deps.enqueueSend(text, { token, windowTitle, composerId }));
           }
           case 'cursor_enqueue_send': {
             const text = typeof args.text === 'string' ? args.text.trim() : '';
             if (!text) return err('text required');
-            return ok(
-              await deps.enqueueSend(text, {
-                composerId:
-                  typeof args.composerId === 'string' ? args.composerId : undefined,
-                windowTitle:
-                  typeof args.windowTitle === 'string' ? args.windowTitle : undefined,
-              })
-            );
+            const token = parseToken(args);
+            if (!token) return err('token required');
+            const windowTitle =
+              typeof args.windowTitle === 'string' ? args.windowTitle : undefined;
+            const composerId = parseComposerId(args);
+            return ok(await deps.enqueueSend(text, { token, windowTitle, composerId }));
           }
           case 'cursor_send_queue_list':
             return ok({ items: deps.listSendQueue() });

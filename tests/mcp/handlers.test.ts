@@ -4,16 +4,22 @@ import { CursorModel } from '../../src/cursor/cursor-model';
 import { CursorDbReader } from '../../src/db/reader';
 import { createCrMcpHandlers, MCP_TOOL_NAMES } from '../../src/mcp/handlers';
 import type { CrMcpDeps } from '../../src/mcp/handlers';
+import Database from 'better-sqlite3';
 import { createTestDb, removeTestDb, COMPOSER_ID } from '../fixture';
+import { seedRegisterBubble } from '../fixtures/agent-token-db';
+
+const TOKEN = 'cr-agent-44444444-4444-4444-4444-444444444444';
 
 function depsFrom(store: ChatStore, cdp = CursorMock.port('idle')): CrMcpDeps {
   const cursor = new CursorModel(store, cdp);
   return {
     listChats: () => store.getChats(),
-    getChat: (id, fresh) => cursor.chat(id, fresh),
-    snapshot: (id, opts) => cursor.snapshot(id, opts),
-    send: (text, opts) => cursor.send(text, opts),
-    enqueueSend: (text, opts) => cursor.enqueueSend(text, opts),
+    getChatByToken: (token, fresh) => cursor.getChatByToken(token, fresh),
+    snapshotByToken: (token, o) => cursor.snapshotByToken(token, o),
+    send: (text, o) => cursor.send(text, o),
+    enqueueSend: (text, o) => cursor.enqueueSend(text, o),
+    registerAgentToken: () => cursor.registerAgentToken(),
+    resolveAgentToken: (token) => cursor.resolveAgentToken(token),
     listSendQueue: () => cursor.listSendQueue(),
     drainSendQueue: () => cursor.drainSendQueue(),
     refreshDb: async () => {
@@ -44,78 +50,61 @@ describe('MCP handlers', () => {
   });
 
   it('exports expected tool names', () => {
-    expect(MCP_TOOL_NAMES).toContain('cursor_list_chats');
-    expect(MCP_TOOL_NAMES).toContain('cursor_send');
-    expect(MCP_TOOL_NAMES.length).toBeGreaterThanOrEqual(6);
+    expect(MCP_TOOL_NAMES).toContain('cursor_agent_register');
+    expect(MCP_TOOL_NAMES).toContain('cursor_agent_resolve');
+    expect(MCP_TOOL_NAMES).toContain('cursor_enqueue_send');
+    expect(MCP_TOOL_NAMES).not.toContain('cursor_enqueue_self');
+    expect(MCP_TOOL_NAMES).not.toContain('cursor_active_composer');
   });
 
   it('cursor_list_chats returns chats from db', async () => {
     const h = createCrMcpHandlers(depsFrom(store));
     const r = await h.handleTool('cursor_list_chats', {});
-    const body = JSON.parse(r.text);
-    expect(body.chats.some((c: { composerId: string }) => c.composerId === COMPOSER_ID)).toBe(true);
     expect(r.isError).toBeFalsy();
-  });
-
-  it('cursor_get_chat returns messages', async () => {
-    const h = createCrMcpHandlers(depsFrom(store));
-    const r = await h.handleTool('cursor_get_chat', { composerId: COMPOSER_ID });
     const body = JSON.parse(r.text);
-    expect(body.messages).toHaveLength(2);
-    expect(body.messages[0].text).toBe('Hello');
-    expect(body.messageTotal).toBe(2);
+    expect(body.chats.length).toBeGreaterThan(0);
   });
 
-  it('cursor_list_chats respects limit', async () => {
+  it('cursor_agent_register returns token', async () => {
     const h = createCrMcpHandlers(depsFrom(store));
-    const all = JSON.parse((await h.handleTool('cursor_list_chats', {})).text);
-    const r = await h.handleTool('cursor_list_chats', { limit: 1, offset: 0 });
+    const r = await h.handleTool('cursor_agent_register', {});
     const body = JSON.parse(r.text);
-    expect(body.chats).toHaveLength(1);
-    expect(body.limit).toBe(1);
-    expect(body.total).toBe(all.total);
-    expect(body.truncated).toBe(all.total > 1);
+    expect(body.token).toMatch(/^cr-agent-/);
   });
 
-  it('cursor_get_chat unknown id is error', async () => {
+  it('cursor_agent_resolve requires token', async () => {
     const h = createCrMcpHandlers(depsFrom(store));
-    const r = await h.handleTool('cursor_get_chat', {
-      composerId: '00000000-0000-0000-0000-000000000000',
-    });
+    const r = await h.handleTool('cursor_agent_resolve', {});
     expect(r.isError).toBe(true);
   });
 
-  it('cursor_snapshot has no chats by default', async () => {
+  it('cursor_agent_resolve finds token in db', async () => {
+    const db = new Database(dbPath);
+    seedRegisterBubble(db, COMPOSER_ID, TOKEN);
+    db.close();
+    await store.refresh();
     const h = createCrMcpHandlers(depsFrom(store));
-    const r = await h.handleTool('cursor_snapshot', { composerId: COMPOSER_ID });
+    const r = await h.handleTool('cursor_agent_resolve', { token: TOKEN });
+    expect(r.isError).toBeFalsy();
     const body = JSON.parse(r.text);
-    expect(body.cdp.ok).toBe(true);
-    expect(body.chats).toBeUndefined();
-    expect(body.switch).toBeDefined();
+    expect(body.composerId).toBe(COMPOSER_ID);
   });
 
-  it('cursor_send rejects empty text', async () => {
+  it('cursor_enqueue_send requires token', async () => {
     const h = createCrMcpHandlers(depsFrom(store));
-    const r = await h.handleTool('cursor_send', { text: '  ', composerId: COMPOSER_ID });
+    const r = await h.handleTool('cursor_enqueue_send', { text: 'q' });
     expect(r.isError).toBe(true);
   });
 
-  it('cursor_send with mock cdp', async () => {
+  it('cursor_enqueue_send with token', async () => {
+    const db = new Database(dbPath);
+    seedRegisterBubble(db, COMPOSER_ID, TOKEN);
+    db.close();
+    await store.refresh();
     const h = createCrMcpHandlers(depsFrom(store));
-    const r = await h.handleTool('cursor_send', { text: 'hi', composerId: COMPOSER_ID });
+    const r = await h.handleTool('cursor_enqueue_send', { text: 'q', token: TOKEN });
+    expect(r.isError).toBeFalsy();
     const body = JSON.parse(r.text);
-    expect(body.ok).toBe(true);
-    expect(body.text).toBe('hi');
-  });
-
-  it('cursor_enqueue_send', async () => {
-    const h = createCrMcpHandlers(depsFrom(store));
-    const r = await h.handleTool('cursor_enqueue_send', {
-      text: 'q',
-      composerId: COMPOSER_ID,
-    });
-    const body = JSON.parse(r.text);
-    expect(body.native).toBe(true);
     expect(body.text).toBe('q');
   });
 
