@@ -1,3 +1,4 @@
+import type { ActiveComposer } from './active-composer';
 import type { CdpTarget } from './client';
 import type { ComposerAgentPageProbe } from './probes/composer-agent.v1';
 import { COMPOSER_AGENT_PROBE_ID } from './probes/composer-agent.v1';
@@ -14,6 +15,14 @@ export interface CdpSendResult {
   submitHow?: string;
 }
 
+export interface DismissOutcome {
+  kind: 'pretty_dialog' | 'revert';
+  open: boolean;
+  action?: string;
+  btn?: string;
+  windowTitle?: string;
+}
+
 export interface CdpPort {
   isAvailable(): Promise<boolean>;
   listTargets(): Promise<CdpTarget[]>;
@@ -22,10 +31,16 @@ export interface CdpPort {
   ): Promise<ComposerAgentPageProbe[]>;
   switchComposer(
     composerId: string,
-    opts?: { windowTitle?: string; chatName?: string }
+    opts?: { windowTitle?: string; chatName?: string; workspaceHints?: string[] }
   ): Promise<{ ok: boolean; reason: string; switchTarget?: string }>;
-  sendMessage(
-    text: string,
-    opts?: { windowTitle?: string; allowBusy?: boolean }
-  ): Promise<CdpSendResult>;
+  sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult>;
+  probeActive(opts?: {
+    windowTitle?: string;
+    workspaceHints?: string[];
+  }): Promise<ActiveComposer | null>;
+  findWindowForComposer(
+    composerId: string,
+    opts?: { workspaceHints?: string[] }
+  ): Promise<ActiveComposer | null>;
+  dismissModals(): Promise<DismissOutcome[]>;
 }

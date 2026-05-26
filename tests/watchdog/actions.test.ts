@@ -1,5 +1,6 @@
-import type { WatchdogActions, DismissOutcome } from '../../src/watchdog/actions';
-import { runDismissOnPage } from '../../src/watchdog/actions';
+import { FixtureCdp } from '../../src/cdp/fixture-cdp';
+import { runDismissOnPage } from '../../src/cdp/dismiss-modals';
+import { createWatchdogActions } from '../../src/watchdog/actions';
 
 describe('runDismissOnPage', () => {
   it('returns empty when no modal', async () => {
@@ -21,12 +22,12 @@ describe('runDismissOnPage', () => {
   });
 });
 
-describe('WatchdogActions mock', () => {
-  it('drainQueue interface', async () => {
-    const actions: WatchdogActions = {
-      dismissModals: async () => [] as DismissOutcome[],
-      drainQueue: async () => ({ sent: 2, remaining: 1 }),
-    };
-    expect(await actions.drainQueue()).toEqual({ sent: 2, remaining: 1 });
+describe('createWatchdogActions', () => {
+  it('uses CdpPort.dismissModals', async () => {
+    const cdp = new FixtureCdp('modal-revert');
+    const actions = createWatchdogActions(cdp, async () => ({ sent: 0, remaining: 0 }));
+    const out = await actions.dismissModals();
+    expect(out).toHaveLength(1);
+    expect(await actions.drainQueue()).toEqual({ sent: 0, remaining: 0 });
   });
 });

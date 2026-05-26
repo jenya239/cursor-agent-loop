@@ -1,11 +1,13 @@
 import { checkCdpAvailable, cdpBaseUrl, listTargets } from './client';
-import { switchViaQuickOpen } from './switch-quick-open';
 import { runComposerSend } from './composer-send';
+import { switchComposerVerified } from './switch-composer';
 import { runProbeOnTargets } from './probes/registry';
-import { COMPOSER_AGENT_PROBE_ID, COMPOSER_SWITCH_PROBE_ID } from './port';
-import type { ComposerSwitchValue } from './probes/composer-switch.v1';
+import { liveProbeActive, liveFindWindowForComposer } from './active-composer';
+import { liveDismissModals } from './dismiss-modals';
+import { COMPOSER_AGENT_PROBE_ID } from './port';
 import type { ComposerAgentPageProbe } from './probes/composer-agent.v1';
-import type { CdpPort, CdpSendResult } from './port';
+import type { ActiveComposer } from './active-composer';
+import type { CdpPort, CdpSendResult, DismissOutcome } from './port';
 
 export class LiveCdp implements CdpPort {
   constructor(private readonly base = cdpBaseUrl()) {}
@@ -25,45 +27,38 @@ export class LiveCdp implements CdpPort {
 
   async switchComposer(
     composerId: string,
-    opts?: { windowTitle?: string; chatName?: string }
-  ): Promise<{ ok: boolean; reason: string; switchTarget?: string }> {
+    opts?: { windowTitle?: string; chatName?: string; workspaceHints?: string[] }
+  ) {
     if (!(await this.isAvailable())) {
       return { ok: false, reason: 'cdp-unavailable' };
     }
-    const targets = await this.listTargets();
-    if (opts?.windowTitle) {
-      const t = targets.find((x) => (x.title || '').includes(opts.windowTitle!));
-      if (!t) return { ok: false, reason: 'window-not-found' };
-    }
-    const rows = (await runProbeOnTargets(COMPOSER_SWITCH_PROBE_ID, targets, {
-      composerId,
-      chatName: opts?.chatName,
-    })) as ComposerSwitchValue[];
-    const hit = rows.find((r) => r.ok);
-    if (hit) {
-      return {
-        ok: true,
-        reason: hit.reason,
-        switchTarget: hit.target ?? opts?.windowTitle,
-      };
-    }
-    const query = opts?.chatName || composerId.slice(0, 8);
-    if (query.length >= 3) {
-      return switchViaQuickOpen(targets, query, opts?.windowTitle);
-    }
-    return { ok: false, reason: rows[0]?.reason || 'no-element' };
+    return switchComposerVerified(this, composerId, () => listTargets(this.base), opts);
   }
 
-  async sendMessage(
-    text: string,
-    opts?: { windowTitle?: string; allowBusy?: boolean }
-  ): Promise<CdpSendResult> {
+  async sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult> {
     const r = await runComposerSend(text, {
       windowTitle: opts?.windowTitle,
-      allowBusy: opts?.allowBusy,
       base: this.base,
     });
     return { ok: true, text: r.text, pageTitle: r.pageTitle, submitHow: r.submitHow };
+  }
+
+  async probeActive(opts?: {
+    windowTitle?: string;
+    workspaceHints?: string[];
+  }): Promise<ActiveComposer | null> {
+    return liveProbeActive(this, opts);
+  }
+
+  async findWindowForComposer(
+    composerId: string,
+    opts?: { workspaceHints?: string[] }
+  ): Promise<ActiveComposer | null> {
+    return liveFindWindowForComposer(this, composerId, opts?.workspaceHints);
+  }
+
+  async dismissModals(): Promise<DismissOutcome[]> {
+    return liveDismissModals(this);
   }
 }
 

@@ -3,7 +3,8 @@ import http from 'http';
 import { createWatchdogApp } from './http-api';
 import { startDaemon } from './daemon';
 import { WatchdogStats } from './stats';
-import { createLiveCdpActions } from './actions';
+import { createWatchdogActions } from './actions';
+import { liveCdp } from '../cdp/live-cdp';
 import { defaultPidPath, defaultSockPath, removePidFile, writePidFile } from './paths';
 
 async function drainViaCrServer(): Promise<{ sent: number; remaining: number }> {
@@ -32,7 +33,7 @@ export async function runWatchdogDaemon(): Promise<void> {
   }
 
   const stats = new WatchdogStats();
-  const actions = createLiveCdpActions(drainViaCrServer);
+  const actions = createWatchdogActions(liveCdp, drainViaCrServer);
 
   let server!: http.Server;
   const daemon = startDaemon({ actions, stats, pollMs });
