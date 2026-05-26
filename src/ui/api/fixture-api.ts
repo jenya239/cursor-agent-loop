@@ -1,56 +1,78 @@
-import fs from 'fs';
-import path from 'path';
+import { ChatStore } from '../../chat-store';
+import { CursorDbReader } from '../../db/reader';
+import { CursorModel } from '../../cursor/cursor-model';
+import { FixtureCdp, type FixtureScenario } from '../../cdp/fixture-cdp';
+import { bindAgentToken } from '../../cursor/token-bind';
+import { COMPOSER_ID, createTestDb, removeTestDb } from '../../db/test-db';
+import { ModelApi } from './model-api';
 import type { CrApi } from './cr-api';
-import type {
-  ChatDetailResponse,
-  ChatsPayload,
-  CursorSnapshot,
-  SendResponse,
-  StoreStatus,
-} from './types';
 
 export type UiFixtureScenario = 'idle' | 'busy' | 'cdp-down' | 'send-blocked';
 
-const FIX = path.join(process.cwd(), 'tests/ui-fixtures');
+const FIXTURE_TOKEN = 'cr-agent-ui-fixture-000000000001';
 
-function load<T>(name: string): T {
-  return JSON.parse(fs.readFileSync(path.join(FIX, name), 'utf8')) as T;
+function toFixtureScenario(s: UiFixtureScenario): FixtureScenario {
+  if (s === 'cdp-down') return 'down';
+  return s;
 }
 
-export class FixtureApi implements CrApi {
-  constructor(private readonly scenario: UiFixtureScenario = 'idle') {}
+/** In-memory CrApi backed by CursorModel + FixtureCdp + test db. */
+export class FixtureApi extends ModelApi implements CrApi {
+  readonly reader: CursorDbReader;
+  private readonly dbPath: string;
+  private readonly ready: Promise<void>;
 
-  async snapshot(composerId?: string): Promise<CursorSnapshot> {
-    if (this.scenario === 'cdp-down') {
-      const s = load<CursorSnapshot>('snapshot-idle.json');
-      return { ...s, cdp: { ok: false }, agent: { ...s.agent, cdpOk: false, phase: 'unknown' } };
-    }
-    const name = this.scenario === 'busy' ? 'snapshot-busy.json' : 'snapshot-idle.json';
-    const s = load<CursorSnapshot>(name);
-    return composerId ? s : s;
+  constructor(scenario: UiFixtureScenario = 'idle') {
+    const dbPath = createTestDb();
+    const reader = CursorDbReader.fromPath(dbPath);
+    const store = new ChatStore(reader, dbPath, true);
+    const cdp = new FixtureCdp(toFixtureScenario(scenario));
+    const model = new CursorModel(store, cdp);
+    bindAgentToken(FIXTURE_TOKEN, COMPOSER_ID);
+    super(model, store, { token: FIXTURE_TOKEN, defaultComposerId: COMPOSER_ID });
+    this.reader = reader;
+    this.dbPath = dbPath;
+    this.ready = store.refresh();
   }
 
-  async chat(_composerId: string, _fresh?: boolean): Promise<ChatDetailResponse> {
-    return load<ChatDetailResponse>('chat-detail.json');
+  private async go(): Promise<void> {
+    await this.ready;
   }
 
-  async send(text: string): Promise<SendResponse> {
-    if (this.scenario === 'send-blocked') {
-      throw new Error('агент сейчас работает');
-    }
-    return { ok: true, text, pageTitle: 'cr - cr - Cursor' };
+  async snapshot(composerId?: string) {
+    await this.go();
+    return super.snapshot(composerId);
   }
 
-  async refreshDb(): Promise<StoreStatus> {
-    return { ready: true, loading: false, partial: false, count: 1, cachedAt: 1, error: null };
+  async chat(composerId: string, fresh?: boolean) {
+    await this.go();
+    return super.chat(composerId, fresh);
   }
 
-  async listChats(): Promise<ChatsPayload> {
-    const j = load<{ chats: ChatsPayload['chats']; partial?: boolean }>('chats-list.json');
-    return { chats: j.chats, partial: !!j.partial };
+  async send(text: string, composerId?: string, windowTitle?: string) {
+    await this.go();
+    return super.send(text, composerId, windowTitle);
   }
 
-  async status(): Promise<StoreStatus> {
-    return this.refreshDb();
+  async refreshDb() {
+    await this.go();
+    return super.refreshDb();
+  }
+
+  async listChats() {
+    await this.go();
+    return super.listChats();
+  }
+
+  async status() {
+    await this.go();
+    return super.status();
+  }
+
+  dispose(): void {
+    this.reader.close();
+    removeTestDb(this.dbPath);
   }
 }
+
+export { FIXTURE_TOKEN };
