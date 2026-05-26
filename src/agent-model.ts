@@ -16,16 +16,15 @@ export interface AgentState {
   at: number;
 }
 
-export type CdpProbe = () => Promise<{ ok: boolean; busy: boolean; reason?: string; windowTitle?: string }>;
+export type CdpProbe = (
+  ctx?: { composerId?: string; windowTitle?: string; workspaceHints?: string[] }
+) => Promise<{ ok: boolean; busy: boolean; reason?: string; windowTitle?: string }>;
 
 export class AgentModel {
-  private cdpCache: {
-    at: number;
-    ok: boolean;
-    busy: boolean;
-    reason?: string;
-    windowTitle?: string;
-  } | null = null;
+  private cdpCache = new Map<
+    string,
+    { at: number; ok: boolean; busy: boolean; reason?: string; windowTitle?: string }
+  >();
 
   constructor(
     private readonly reader: CursorDbReader,
@@ -33,23 +32,34 @@ export class AgentModel {
     private readonly cdpTtlMs = 400
   ) {}
 
-  private async cdp(): Promise<{
+  private cacheKey(ctx?: { composerId?: string; windowTitle?: string }): string {
+    if (!ctx?.composerId) return '__global__';
+    return `${ctx.composerId}:${ctx.windowTitle ?? ''}`;
+  }
+
+  private async cdp(ctx?: {
+    composerId?: string;
+    windowTitle?: string;
+    workspaceHints?: string[];
+  }): Promise<{
     ok: boolean;
     busy: boolean;
     reason?: string;
     windowTitle?: string;
   }> {
-    const hit = this.cdpCache;
+    const key = this.cacheKey(ctx);
+    const hit = this.cdpCache.get(key);
     if (hit && Date.now() - hit.at < this.cdpTtlMs) {
       return hit;
     }
     try {
-      const r = await this.probeCdp();
-      this.cdpCache = { at: Date.now(), ...r };
+      const r = await this.probeCdp(ctx);
+      const entry = { at: Date.now(), ...r };
+      this.cdpCache.set(key, entry);
       return r;
     } catch {
       const r = { ok: false, busy: false, reason: 'cdp-error' };
-      this.cdpCache = { at: Date.now(), ...r };
+      this.cdpCache.set(key, { at: Date.now(), ...r });
       return r;
     }
   }
@@ -74,9 +84,12 @@ export class AgentModel {
     };
   }
 
-  async forComposer(composerId: string): Promise<AgentState> {
+  async forComposer(
+    composerId: string,
+    opts?: { windowTitle?: string; workspaceHints?: string[] }
+  ): Promise<AgentState> {
     const { dbBusy, dbStatus } = this.dbState(composerId);
-    const cdp = await this.cdp();
+    const cdp = await this.cdp({ composerId, windowTitle: opts?.windowTitle, workspaceHints: opts?.workspaceHints });
     const cdpBusy = cdp.ok && cdp.busy;
     const busy = dbBusy || cdpBusy;
     let phase: AgentPhase = 'unknown';

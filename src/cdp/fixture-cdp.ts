@@ -203,6 +203,10 @@ export class FixtureCdp implements CdpPort {
       },
     ];
   }
+
+  isModalOpen(): boolean {
+    return this.modalOpen;
+  }
 }
 
 export {
