@@ -15,6 +15,11 @@
     "test:e2e": "playwright test",
     "fixture:record": "tsx scripts/fixture-record.ts",
     "mcp": "node dist/mcp/stdio-main.js",
+    "queue:debug": "tsx scripts/queue-debug.ts",
+    "queue:flush": "tsx scripts/queue-debug.ts flush",
+    "watchdog:start": "tsx scripts/watchdog.ts start",
+    "watchdog:stop": "tsx scripts/watchdog.ts stop",
+    "watchdog:status": "tsx scripts/watchdog.ts status",
     "premcp": "npm run build"
   },
   "dependencies": {
