@@ -36,10 +36,7 @@ export class LiveCdp implements CdpPort {
   }
 
   async sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult> {
-    const r = await runComposerSend(text, {
-      windowTitle: opts?.windowTitle,
-      base: this.base,
-    });
+    const r = await runComposerSend(this, text, { windowTitle: opts?.windowTitle });
     return { ok: true, text: r.text, pageTitle: r.pageTitle, submitHow: r.submitHow };
   }
 

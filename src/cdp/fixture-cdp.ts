@@ -36,7 +36,9 @@ export type FixtureScenario =
   | 'switch-fail'
   | 'switch-ok'
   | 'switch-unverified'
-  | 'modal-revert';
+  | 'modal-revert'
+  | 'draft-stuck'
+  | 'multi-busy';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 
@@ -53,9 +55,11 @@ export function isFixtureCdp(cdp: CdpPort): cdp is FixtureCdp {
 export class FixtureCdp implements CdpPort {
   readonly isFixture = true;
   private modalOpen: boolean;
+  private draftStuck: boolean;
 
   constructor(private readonly scenario: FixtureScenario = 'idle') {
     this.modalOpen = scenario === 'modal-revert';
+    this.draftStuck = scenario === 'draft-stuck';
   }
 
   async isAvailable(): Promise<boolean> {
@@ -86,8 +90,9 @@ export class FixtureCdp implements CdpPort {
         return { title: t.title, ...NO_BAR };
       }
       const useBusy =
-        (this.scenario === 'busy' || this.scenario === 'send-blocked') &&
-        /cr - cr - Cursor/i.test(t.title || '');
+        ((this.scenario === 'busy' || this.scenario === 'send-blocked') &&
+          /cr - cr - Cursor/i.test(t.title || '')) ||
+        (this.scenario === 'multi-busy' && this.pageHasComposer(t));
       const v = parseComposerAgentProbeValue(useBusy ? busy : idle)!;
       return { title: t.title, ...v };
     });
@@ -157,6 +162,11 @@ export class FixtureCdp implements CdpPort {
     if (this.scenario === 'send-blocked') {
       throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
     }
+    if (this.scenario === 'draft-stuck' && this.draftStuck) {
+      throw new Error(
+        'composer not empty (draft 42 chars) — clear field manually; revert modal if open'
+      );
+    }
     const targets = await this.listTargets();
     const page = opts?.windowTitle
       ? targets.find((t) => (t.title || '').includes(opts.windowTitle!))
@@ -206,6 +216,14 @@ export class FixtureCdp implements CdpPort {
 
   isModalOpen(): boolean {
     return this.modalOpen;
+  }
+
+  clearComposerDraft(): void {
+    this.draftStuck = false;
+  }
+
+  hasComposerDraft(): boolean {
+    return this.draftStuck;
   }
 }
 
