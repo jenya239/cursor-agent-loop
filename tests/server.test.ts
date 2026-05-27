@@ -9,7 +9,7 @@ import { seedRegisterBubble } from './fixtures/agent-token-db';
 
 const TOKEN = 'cr-agent-cccccccc-cccc-cccc-cccc-cccccccccccc';
 
-const noCdp = { cdp: CursorMock.port('idle'), sendQueueDrain: false };
+const noCdp = { cdp: CursorMock.port('idle'), sendQueueDrain: false, watchdogStats: null };
 
 describe('HTTP API', () => {
   let dbPath: string;

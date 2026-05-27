@@ -101,15 +101,13 @@ npm run mcp   # stdio (для отладки)
 
 ## Watchdog
 
-Фоновый daemon: dismiss modals + drain send queue (без HTTP server).
+Фоновый poll в процессе cr (`npm run dev` / `npm start`). Отключить: `CR_WATCHDOG=0`.
 
 ```bash
-npm run watchdog:start
-npm run watchdog:status
-npm run watchdog:stop
+npm run dev   # watchdog in-process, tab watchdog в UI
 ```
 
-Socket: `~/.cursor/cr-watchdog.sock`, UI tab **watchdog**, `GET /api/watchdog/stats`
+Standalone (опционально): `npm run watchdog:start` — отдельный socket, если server без watchdog.
 
 | Tool | Args | Примечание |
 |------|------|------------|

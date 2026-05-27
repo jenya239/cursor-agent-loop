@@ -9,6 +9,8 @@ import { liveCdp } from './cdp/live-cdp';
 import { scheduleSendRelease } from './send-guard';
 import { startSendQueueDrain } from './send-queue-drain';
 import { isAgentBusySendError } from './send-queue';
+import type { WatchdogStats } from './watchdog/stats';
+import { fetchWatchdogStats } from './watchdog/proxy';
 
 export type SendHandler = (
   text: string,
@@ -23,6 +25,7 @@ export function createApp(
     cdp?: CdpPort;
     cursor?: CursorModel;
     sendQueueDrain?: boolean;
+    watchdogStats?: WatchdogStats | null;
   }
 ): express.Express {
   const app = express();
@@ -48,7 +51,14 @@ export function createApp(
   });
 
   app.get('/api/watchdog/stats', async (_req, res) => {
-    const { fetchWatchdogStats } = await import('./watchdog/proxy');
+    if (opts?.watchdogStats) {
+      res.json(opts.watchdogStats.snapshot());
+      return;
+    }
+    if (opts?.watchdogStats === null) {
+      res.status(503).json({ error: 'watchdog disabled' });
+      return;
+    }
     const r = await fetchWatchdogStats();
     if (!r.ok) {
       res.status(503).json({ error: r.error });
@@ -301,26 +311,39 @@ export function createApp(
 }
 
 function main(): void {
-  const dbPath = process.env.CURSOR_DB || globalDbPath();
-  const reader = CursorDbReader.fromPath(dbPath, { copy: process.env.COPY_DB === '1' });
-  const fullScan = process.env.FULL_SCAN === '1';
-  const store = new ChatStore(reader, dbPath, fullScan);
+  void (async () => {
+    const dbPath = process.env.CURSOR_DB || globalDbPath();
+    const reader = CursorDbReader.fromPath(dbPath, { copy: process.env.COPY_DB === '1' });
+    const fullScan = process.env.FULL_SCAN === '1';
+    const store = new ChatStore(reader, dbPath, fullScan);
 
-  const app = createApp(store);
-  const port = Number(process.env.PORT) || 3847;
+    let watchdogSvc: Awaited<ReturnType<typeof import('./watchdog/service').startWatchdogService>> | undefined;
+    if (process.env.CR_WATCHDOG !== '0') {
+      const { startWatchdogService } = await import('./watchdog/service');
+      watchdogSvc = await startWatchdogService();
+      process.stderr.write('[cr] watchdog in-process\n');
+    }
 
-  const server = app.listen(port, () => {
-    console.log(`http://127.0.0.1:${port}  db=${dbPath}`);
-    store.warm();
+    const app = createApp(store, { watchdogStats: watchdogSvc?.stats ?? null });
+    const port = Number(process.env.PORT) || 3847;
+
+    const server = app.listen(port, () => {
+      console.log(`http://127.0.0.1:${port}  db=${dbPath}`);
+      store.warm();
+    });
+
+    const shutdown = () => {
+      watchdogSvc?.close();
+      server.close();
+      reader.close();
+      process.exit(0);
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+  })().catch((e) => {
+    console.error(e);
+    process.exit(1);
   });
-
-  const shutdown = () => {
-    server.close();
-    reader.close();
-    process.exit(0);
-  };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
 }
 
 if (require.main === module) {

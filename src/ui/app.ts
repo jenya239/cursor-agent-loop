@@ -67,8 +67,15 @@ export function boot(): void {
   async function refreshWatchdog() {
     try {
       const r = await fetch('/api/watchdog/stats');
+      const ct = r.headers.get('content-type') || '';
       if (!r.ok) {
-        const body = (await r.json().catch(() => ({}))) as { error?: string };
+        if (r.status === 404) {
+          watchdogBody.innerHTML = renderWatchdogHtml(null, 'нет /api/watchdog/stats — перезапусти npm run dev');
+          return;
+        }
+        const body = ct.includes('json')
+          ? ((await r.json()) as { error?: string })
+          : { error: r.statusText };
         watchdogBody.innerHTML = renderWatchdogHtml(null, body.error || r.statusText);
         return;
       }

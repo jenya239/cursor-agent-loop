@@ -1,16 +1,12 @@
 import fs from 'fs';
 import http from 'http';
 import { createWatchdogApp } from './http-api';
-import { startDaemon } from './daemon';
-import { WatchdogStats } from './stats';
-import { createWatchdogActions } from './actions';
-import { createWatchdogRuntime } from './runtime';
+import { startWatchdogService } from './service';
 import { defaultSockPath, removePidFile, writePidFile } from './paths';
 
 export async function runWatchdogDaemon(): Promise<void> {
   const sock = defaultSockPath();
   const port = process.env.WATCHDOG_PORT ? Number(process.env.WATCHDOG_PORT) : undefined;
-  const pollMs = Number(process.env.CR_WATCHDOG_POLL_MS) || 4000;
 
   if (!port && fs.existsSync(sock)) {
     try {
@@ -20,16 +16,11 @@ export async function runWatchdogDaemon(): Promise<void> {
     }
   }
 
-  const rt = await createWatchdogRuntime();
-  const stats = new WatchdogStats();
-  const actions = createWatchdogActions(rt.cdp, () => rt.cursor.drainSendQueue());
+  const svc = await startWatchdogService();
 
   let server!: http.Server;
-  const daemon = startDaemon({ actions, stats, pollMs });
-
   const shutdown = () => {
-    daemon.stop();
-    rt.close();
+    svc.close();
     removePidFile();
     if (!port && fs.existsSync(sock)) {
       try {
@@ -42,8 +33,8 @@ export async function runWatchdogDaemon(): Promise<void> {
   };
 
   const app = createWatchdogApp({
-    stats,
-    daemon,
+    stats: svc.stats,
+    daemon: svc.daemon,
     pid: process.pid,
     sock: port ? undefined : sock,
     port,
@@ -69,7 +60,7 @@ export async function runWatchdogDaemon(): Promise<void> {
   });
 
   process.stderr.write(
-    `[watchdog] pid=${process.pid} ${port ? `port=${port}` : `sock=${sock}`} poll=${pollMs}ms\n`
+    `[watchdog] pid=${process.pid} ${port ? `port=${port}` : `sock=${sock}`} standalone\n`
   );
 
   process.on('SIGINT', shutdown);

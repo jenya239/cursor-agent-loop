@@ -536,8 +536,13 @@
     async function refreshWatchdog() {
       try {
         const r = await fetch("/api/watchdog/stats");
+        const ct = r.headers.get("content-type") || "";
         if (!r.ok) {
-          const body = await r.json().catch(() => ({}));
+          if (r.status === 404) {
+            watchdogBody.innerHTML = renderWatchdogHtml(null, "\u043D\u0435\u0442 /api/watchdog/stats \u2014 \u043F\u0435\u0440\u0435\u0437\u0430\u043F\u0443\u0441\u0442\u0438 npm run dev");
+            return;
+          }
+          const body = ct.includes("json") ? await r.json() : { error: r.statusText };
           watchdogBody.innerHTML = renderWatchdogHtml(null, body.error || r.statusText);
           return;
         }
