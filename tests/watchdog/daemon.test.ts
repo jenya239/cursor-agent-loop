@@ -1,6 +1,7 @@
 import { startDaemon } from '../../src/watchdog/daemon';
 import { WatchdogStats } from '../../src/watchdog/stats';
 import type { WatchdogActions } from '../../src/watchdog/actions';
+import { StuckTracker } from '../../src/watchdog/stuck-tracker';
 
 function actions(partial?: Partial<WatchdogActions>): WatchdogActions {
   return {
@@ -67,7 +68,7 @@ describe('startDaemon', () => {
     expect(stats.snapshot().errors_total).toBe(1);
   });
 
-  it('recovers slow windows after threshold', async () => {
+  it('recovers slow windows after slowMs', async () => {
     const stats = new WatchdogStats(0);
     const recoverSlow = jest.fn().mockResolvedValue({ windowTitle: 'mlc', outcome: { stopped: true, dismissed: [], submitted: true } });
     const { tick } = startDaemon({
@@ -77,8 +78,10 @@ describe('startDaemon', () => {
             windowTitle: 'mlc',
             composerId: 'x',
             model: 'Composer',
+            agentRole: 'default',
             busy: true,
             slowCount: 2,
+            reconnecting: false,
             draftLen: 20,
             draftHasToken: true,
             pairs: [{ preview: 'STEP=16', slow: true }],
@@ -89,7 +92,41 @@ describe('startDaemon', () => {
       stats,
       pollMs: 1000,
       slowMs: 0,
-      slowRecover: true,
+      busyMs: 600_000,
+    });
+    await tick();
+    expect(recoverSlow).toHaveBeenCalledWith('mlc');
+    expect(stats.snapshot().slow_recoveries_total).toBe(1);
+  });
+
+  it('recovers busy-only windows after busyMs', async () => {
+    const stats = new WatchdogStats(0);
+    const recoverSlow = jest.fn().mockResolvedValue({ windowTitle: 'mlc', outcome: { stopped: true, dismissed: [], submitted: true } });
+    const tracker = new StuckTracker();
+    tracker.noteBusy('mlc', 0);
+    const { tick } = startDaemon({
+      actions: actions({
+        observe: async () => [
+          {
+            windowTitle: 'mlc',
+            composerId: 'x',
+            model: 'Composer',
+            agentRole: 'default',
+            busy: true,
+            slowCount: 0,
+            reconnecting: false,
+            draftLen: 0,
+            draftHasToken: false,
+            pairs: [],
+          },
+        ],
+        recoverSlow,
+      }),
+      stats,
+      pollMs: 1000,
+      slowMs: 90_000,
+      busyMs: 1000,
+      slowTracker: tracker,
     });
     await tick();
     expect(recoverSlow).toHaveBeenCalledWith('mlc');

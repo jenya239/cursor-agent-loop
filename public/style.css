@@ -156,6 +156,12 @@ body {
   border-color: var(--base01);
 }
 
+#layout[hidden],
+#watchdog-panel[hidden],
+#cursor-layout-panel[hidden] {
+  display: none !important;
+}
+
 #layout {
   display: flex;
   flex: 1;
@@ -482,4 +488,118 @@ aside {
   color: var(--base01);
 }
 
+.wd-h {
+  margin: 10px 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--base01);
+}
+
+.wd-h:first-child {
+  margin-top: 0;
+}
+
+.wd-reconnect td {
+  background: rgba(203, 75, 22, 0.12);
+}
+
+.wd-slow td {
+  background: rgba(181, 137, 0, 0.1);
+}
+
+.wd-bad td {
+  color: var(--red);
+}
+
+.wd-warn td {
+  color: var(--yellow);
+}
+
+.wd-ok td {
+  color: var(--green);
+}
+
+.wd-log {
+  margin: 0;
+  padding: 0 0 0 14px;
+  font-size: 10px;
+  color: var(--base01);
+}
+
+.wd-log-at {
+  color: var(--base00);
+}
+
+.wd-agent-err {
+  margin-bottom: 6px;
+}
+
+.cursor-layout-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  background: var(--base3);
+}
+
+.lw {
+  margin-bottom: 12px;
+}
+
+.lw-head {
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--base01);
+}
+
+.layout-tree {
+  font-size: 10px;
+}
+
+.layout-tree details {
+  margin: 1px 0;
+}
+
+.layout-tree summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.layout-tree summary::-webkit-details-marker {
+  display: none;
+}
+
+.layout-tree .lk {
+  color: var(--base1);
+}
+
+.layout-tree .ls {
+  color: var(--orange);
+}
+
+.layout-tree .la {
+  color: var(--base01);
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* progress tab */
+.progress-panel { padding: 12px 16px; overflow-y: auto; height: calc(100vh - var(--bar-h)); box-sizing: border-box; }
+.pr-wrap { max-width: 900px; }
+.pr-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.pr-badge { padding: 2px 8px; border-radius: 3px; font-weight: bold; font-size: 11px; }
+.pr-badge-ok { background: var(--green); color: #fff; }
+.pr-badge-err { background: var(--red); color: #fff; }
+.pr-section { font-size: 11px; color: var(--base1); margin: 14px 0 4px; border-bottom: 1px solid var(--base2); padding-bottom: 2px; }
+.pr-state { padding: 4px 0; }
+.pr-track { margin: 4px 0; }
+.pr-bar { display: inline-block; width: 120px; height: 8px; background: var(--base2); border-radius: 3px; vertical-align: middle; margin: 0 6px; }
+.pr-bar-fill { height: 100%; background: var(--green); border-radius: 3px; }
+.pr-log { font-size: 10px; line-height: 1.5; }
+.pr-log-row { display: flex; gap: 8px; }
+.pr-log-time { color: var(--base1); flex-shrink: 0; }
+.pr-ok { color: var(--green); }
+.pr-ok-text { color: var(--green); }
+.pr-err { color: var(--red); }
+.pr-dim { color: var(--base1); }

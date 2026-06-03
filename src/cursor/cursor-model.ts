@@ -20,6 +20,8 @@ import { bindAgentToken } from './token-bind';
 import { generateAgentToken, registerTokenPayload } from './agent-token';
 import { resolveAgentToken as resolveAgentTokenDb } from './resolve-agent-token';
 import { resolveSendTarget } from './resolve-target';
+import { isManagedComposer } from './agent-targets';
+import { checkEnqueueLoop, recordEnqueue } from './loop-guard';
 import type { CursorSession, ModalState } from './session';
 import type {
   ChatDetailView,
@@ -28,6 +30,7 @@ import type {
   CursorSnapshot,
   CursorWindow,
 } from './types';
+import { cachedLayoutSnapshot } from './layout/cache';
 
 const SWITCH_CACHE_MS = 4000;
 
@@ -184,6 +187,10 @@ export class CursorModel {
     return snap;
   }
 
+  layoutSnapshot() {
+    return cachedLayoutSnapshot(this.cdp);
+  }
+
   async chat(composerId: string, fresh = false): Promise<ChatDetailView | null> {
     if (!this.store.reader.getComposerData(composerId)) return null;
     const { summary, messages } = this.store.getChat(composerId, fresh);
@@ -235,11 +242,24 @@ export class CursorModel {
     text: string,
     opts: { token: string; windowTitle?: string; composerId?: string }
   ): Promise<{ ok: true; text: string; pageTitle: string; composerId?: string; target?: string }> {
+    const trimmed = text.trim();
     const target = await resolveSendTarget(this.cdp, {
       token: opts.token,
       composerId: opts.composerId,
       db: this.store.reader,
     });
+    const { messages } = this.store.getChat(target.composerId, true);
+    const loop = checkEnqueueLoop({
+      composerId: target.composerId,
+      text: trimmed,
+      historyMessages: messages,
+      pendingTexts: this.sendQueue
+        .list()
+        .filter((q) => q.composerId === target.composerId)
+        .map((q) => q.text),
+    });
+    if (!loop.allow) throw new Error(`send blocked: ${loop.reason}`);
+    const payload = loop.adjustedText ?? trimmed;
     const summary = this.store.getChats().chats.find((c) => c.composerId === target.composerId);
     const hints = workspaceHintsFromChat(summary);
     const open = await findWindowForComposerId(this.cdp, target.composerId, hints);
@@ -257,7 +277,8 @@ export class CursorModel {
       }
       windowTitle = sw?.switchTarget ?? windowTitle;
     }
-    const r = await this.cdp.sendMessage(text, { windowTitle });
+    const r = await this.cdp.sendMessage(payload, { windowTitle });
+    recordEnqueue(target.composerId, payload);
     return {
       ok: true,
       text: r.text,
@@ -286,6 +307,18 @@ export class CursorModel {
       composerId: opts.composerId,
       db: this.store.reader,
     });
+    const { messages } = this.store.getChat(target.composerId, true);
+    const loop = checkEnqueueLoop({
+      composerId: target.composerId,
+      text: trimmed,
+      historyMessages: messages,
+      pendingTexts: this.sendQueue
+        .list()
+        .filter((q) => q.composerId === target.composerId)
+        .map((q) => q.text),
+    });
+    if (!loop.allow) throw new Error(`enqueue blocked: ${loop.reason}`);
+    const payload = loop.adjustedText ?? trimmed;
     const summary = this.store.getChats().chats.find((c) => c.composerId === target.composerId);
     const hints = workspaceHintsFromChat(summary);
     let windowTitle = opts.windowTitle;
@@ -304,11 +337,12 @@ export class CursorModel {
       if (sw?.switchTarget) windowTitle = sw.switchTarget;
     }
     if (!(await this.canSendNow(target.composerId, windowTitle))) {
-      const item = this.sendQueue.enqueue(trimmed, {
+      const item = this.sendQueue.enqueue(payload, {
         token: opts.token,
         composerId: target.composerId,
         windowTitle,
       });
+      recordEnqueue(target.composerId, payload);
       return {
         ...item,
         position: this.sendQueue.length,
@@ -317,11 +351,12 @@ export class CursorModel {
         target: target.resolved,
       };
     }
-    const item = this.sendQueue.enqueue(trimmed, {
+    const item = this.sendQueue.enqueue(payload, {
       token: opts.token,
       composerId: target.composerId,
       windowTitle,
     });
+    recordEnqueue(target.composerId, payload);
     return {
       ...item,
       position: this.sendQueue.length,
@@ -363,7 +398,7 @@ export class CursorModel {
     return this.sendGate.canSend(st, composerId);
   }
 
-  async drainSendQueue(): Promise<{
+  async drainSendQueue(composerId?: string): Promise<{
     sent: number;
     remaining: number;
     lastPageTitle?: string;
@@ -377,13 +412,17 @@ export class CursorModel {
       let sent = 0;
       let lastPageTitle: string | undefined;
       let blocked: string | undefined;
-      while (this.sendQueue.peek()) {
-        const item = this.sendQueue.peek()!;
+      while (true) {
+        const items = this.sendQueue.list();
+        const item = composerId
+          ? items.find((q) => q.composerId === composerId)
+          : items.find((q) => !q.composerId || isManagedComposer(q.composerId));
+        if (!item) break;
         if (!(await this.canSendNow(item.composerId, item.windowTitle))) {
           blocked = 'canSendNow=false (busy/settle/cdp)';
           break;
         }
-        this.sendQueue.shift();
+        this.sendQueue.remove(item.id);
         try {
           const r = await this.send(item.text, {
             token: item.token!,

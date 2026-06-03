@@ -70,7 +70,7 @@ pre{background:#222;padding:12px;border-radius:6px;overflow:auto}
 button{margin-right:8px;padding:4px 10px}
 </style></head><body>
 <h1>cr-watchdog</h1>
-<div id="status">loading…</div>
+<div id="status">loadingï¿½</div>
 <pre id="stats"></pre>
 <button onclick="fetch('/pause',{method:'POST'}).then(refresh)">pause</button>
 <button onclick="fetch('/resume',{method:'POST'}).then(refresh)">resume</button>

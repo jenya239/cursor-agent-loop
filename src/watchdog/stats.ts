@@ -15,14 +15,17 @@ export interface WatchdogStatsSnapshot {
   last_dismiss_at: string | null;
   last_observe_at: string | null;
   paused: boolean;
+  usageMax?: number | null;
   windows: Array<{
     windowTitle: string;
     composerId: string;
     model: string;
     busy: boolean;
     slowCount: number;
+    reconnecting?: boolean;
     draftLen: number;
     draftHasToken: boolean;
+    usagePct?: number | null;
   }>;
 }
 
@@ -97,6 +100,13 @@ export class WatchdogStats {
   recordError(message: string, meta?: Record<string, unknown>): void {
     this.errors_total++;
     this.push('error', message, meta);
+  }
+
+  /** Drop stale error count so CDP glitches do not block guard forever. */
+  decayErrors(now = Date.now(), windowMs = 30 * 60_000): void {
+    const cutoff = now - windowMs;
+    const recent = this.log.filter((e) => e.type === 'error' && e.ts >= new Date(cutoff).toISOString()).length;
+    if (recent === 0 && this.errors_total > 0) this.errors_total = 0;
   }
 
   setPaused(paused: boolean): void {

@@ -105,6 +105,45 @@ export function registerCrMcpTools(server: McpServer, deps: CrMcpDeps): void {
   );
 
   server.tool('cursor_db_info', 'Current state.vscdb path used by cr', {}, wrap('cursor_db_info'));
+
+  server.tool(
+    'cursor_supervisor',
+    'Overnight supervisor alerts; blocked = critical codes for target',
+    { target: z.enum(['mlc', 'cr']).optional(), refresh: z.boolean().optional() },
+    wrap('cursor_supervisor')
+  );
+
+  server.tool(
+    'cursor_agent_next',
+    'Next ROLE/STEP from TRACK rotation (mlc|cr|all). includePrompt+token for nudge text',
+    {
+      target: z.enum(['mlc', 'cr', 'all']).optional(),
+      token: z.string().optional(),
+      includePrompt: z.boolean().optional(),
+    },
+    wrap('cursor_agent_next')
+  );
+
+  server.tool(
+    'cursor_usage',
+    'Composer context ring usage per window (CDP probe)',
+    {},
+    wrap('cursor_usage')
+  );
+
+  server.tool(
+    'cursor_overnight_state',
+    'Guard cooldown state + tail of overnight log',
+    { tail: z.number().optional() },
+    wrap('cursor_overnight_state')
+  );
+
+  server.tool(
+    'cursor_agent_state',
+    'Agent phase, turn verify, transition log (~/.cursor/cr-agent-state.json)',
+    { target: z.enum(['mlc', 'cr']).optional(), refresh: z.boolean().optional() },
+    wrap('cursor_agent_state')
+  );
 }
 
 export function createCrMcpServer(deps: CrMcpDeps): McpServer {
@@ -112,7 +151,7 @@ export function createCrMcpServer(deps: CrMcpDeps): McpServer {
     { name: 'cr-cursor', version: '0.1.0' },
     {
       instructions:
-        'Agent identity: 1) cursor_agent_register 2) cursor_agent_resolve(token) 3) cursor_enqueue_send/send/snapshot/get_chat with token. Register binds token to active composer immediately; vscdb needed for cross-session resolve.',
+        'Agent identity: 1) cursor_agent_register 2) cursor_agent_resolve(token) 3) cursor_enqueue_send/send with token. Orchestration: cursor_supervisor, cursor_agent_next, cursor_agent_state, cursor_usage, cursor_overnight_state (no token). Health before enqueue: cursor_session + cursor_usage.',
     }
   );
   registerCrMcpTools(server, deps);

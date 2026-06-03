@@ -9,8 +9,17 @@ import { liveCdp } from './cdp/live-cdp';
 import { scheduleSendRelease } from './send-guard';
 import { startSendQueueDrain } from './send-queue-drain';
 import { isAgentBusySendError } from './send-queue';
+import { analyzeSupervisor, loadSupervisorReport } from './supervisor/analyze';
 import type { WatchdogStats } from './watchdog/stats';
 import { fetchWatchdogStats } from './watchdog/proxy';
+import { maxUsagePct, probeWindowUsage } from './cursor/probe-usage';
+import { getAgentState, refreshAgentStates } from './cursor/agent-state';
+import { resolveTargets } from './cursor/agent-targets';
+import type { ChatLine } from './cursor/loop-guard';
+import { buildProgressReport } from './progress/report';
+import { captureSnapshot } from './cursor/interaction/snapshot';
+import { runStep, waitFor, stepRequestToOpts, waitRequestToOpts } from './cursor/interaction';
+import type { StepRequest, WaitRequest } from './cursor/interaction/registry';
 
 export type SendHandler = (
   text: string,
@@ -51,20 +60,66 @@ export function createApp(
   });
 
   app.get('/api/watchdog/stats', async (_req, res) => {
+    let data: Record<string, unknown> | null = null;
     if (opts?.watchdogStats) {
-      res.json(opts.watchdogStats.snapshot());
-      return;
-    }
-    if (opts?.watchdogStats === null) {
+      data = opts.watchdogStats.snapshot() as unknown as Record<string, unknown>;
+    } else if (opts?.watchdogStats === null) {
       res.status(503).json({ error: 'watchdog disabled' });
       return;
+    } else {
+      const r = await fetchWatchdogStats();
+      if (!r.ok) {
+        res.status(503).json({ error: r.error });
+        return;
+      }
+      data = r.data as Record<string, unknown>;
     }
-    const r = await fetchWatchdogStats();
-    if (!r.ok) {
-      res.status(503).json({ error: r.error });
-      return;
+    try {
+      const usage = await probeWindowUsage(cdp);
+      const windows = (data.windows as Array<Record<string, unknown>>) || [];
+      data.usageMax = maxUsagePct(usage);
+      data.windows = windows.map((w) => {
+        const u = usage.find(
+          (x) => x.composerId === w.composerId || (x.windowTitle && x.windowTitle === w.windowTitle)
+        );
+        return {
+          ...w,
+          usagePct: u?.usagePct ?? null,
+          reconnecting: w.reconnecting === true || u?.reconnecting === true,
+        };
+      });
+    } catch {
+      data.usageMax = null;
     }
-    res.json(r.data);
+    res.json(data);
+  });
+
+  app.get('/api/supervisor/alerts', (_req, res) => {
+    res.json(analyzeSupervisor());
+  });
+
+  app.get('/api/supervisor/state', (_req, res) => {
+    const cached = loadSupervisorReport();
+    res.json(cached ?? analyzeSupervisor());
+  });
+
+  app.get('/api/agent/state', async (req, res) => {
+    const targetId = typeof req.query.target === 'string' ? req.query.target.trim() : undefined;
+    const refresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    try {
+      if (refresh) {
+        const usageWindows = await probeWindowUsage(cdp);
+        const targets = targetId ? resolveTargets().filter((t) => t.id === targetId) : resolveTargets();
+        const messages = new Map<string, ChatLine[]>();
+        for (const t of targets) {
+          messages.set(t.composerId, store.getChat(t.composerId, true).messages);
+        }
+        refreshAgentStates(targets, messages, usageWindows);
+      }
+      res.json(getAgentState(targetId));
+    } catch (e) {
+      res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+    }
   });
 
   app.get('/api/session', async (req, res) => {
@@ -81,6 +136,50 @@ export function createApp(
         return;
       }
       res.status(400).json({ error: 'token or composerId required' });
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.get('/api/cursor/layout', async (_req, res) => {
+    try {
+      res.json(await cursor.layoutSnapshot());
+    } catch (e) {
+      res.status(503).json({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.get('/api/cursor/interact/snapshot', async (req, res) => {
+    const windowTitle =
+      typeof req.query.windowTitle === 'string' ? req.query.windowTitle : undefined;
+    try {
+      res.json(await captureSnapshot(cdp, windowTitle));
+    } catch (e) {
+      res.status(503).json({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post('/api/cursor/interact/wait', async (req, res) => {
+    const body = req.body as WaitRequest;
+    if (!body?.expect) {
+      res.status(400).json({ error: 'expect required' });
+      return;
+    }
+    try {
+      res.json(await waitFor(cdp, waitRequestToOpts(body)));
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post('/api/cursor/interact/step', async (req, res) => {
+    const body = req.body as StepRequest;
+    if (!body?.action) {
+      res.status(400).json({ error: 'action required' });
+      return;
+    }
+    try {
+      res.json(await runStep(cdp, stepRequestToOpts(body)));
     } catch (e) {
       res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -235,8 +334,10 @@ export function createApp(
     }
   });
 
-  app.post('/api/send/flush', async (_req, res) => {
-    res.json(await cursor.drainSendQueue());
+  app.post('/api/send/flush', async (req, res) => {
+    const composerId =
+      typeof req.query.composerId === 'string' ? req.query.composerId.trim() : undefined;
+    res.json(await cursor.drainSendQueue(composerId || undefined));
   });
 
   app.get('/api/status', (_req, res) => {
@@ -304,6 +405,14 @@ export function createApp(
       agentBusyDb: agent.dbBusy,
       agentStatus: agent.dbStatus,
     });
+  });
+
+  app.get('/api/progress', (_req, res) => {
+    try {
+      res.json(buildProgressReport());
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
   });
 
   app.use(express.static(path.join(__dirname, '..', 'public')));

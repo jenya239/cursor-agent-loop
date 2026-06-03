@@ -58,6 +58,13 @@ describe('FixtureCdp scenarios', () => {
     expect(r.reason).toBe('verified');
   });
 
+  it('slow scenario marks cr busy with slow', async () => {
+    const cdp = new FixtureCdp('slow');
+    const p = await cdp.runProbe(COMPOSER_AGENT_PROBE_ID);
+    const cr = p.find((x) => /cr - cr/i.test(x.title || ''));
+    expect(cr?.busy).toBe(true);
+  });
+
   it('CursorMock.port multi-busy', async () => {
     const cdp = CursorMock.port('multi-busy');
     const p = await cdp.runProbe(COMPOSER_AGENT_PROBE_ID);

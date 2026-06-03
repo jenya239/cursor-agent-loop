@@ -4,6 +4,7 @@ import { CursorDbReader } from '../src/db/reader';
 import { createApp } from '../src/server';
 import { ChatStore } from '../src/chat-store';
 import { CursorMock } from '../src/cdp/cursor-mock';
+import { WatchdogStats } from '../src/watchdog/stats';
 import { createTestDb, removeTestDb, COMPOSER_ID, BUSY_COMPOSER_ID } from './fixture';
 import { seedRegisterBubble } from './fixtures/agent-token-db';
 
@@ -141,6 +142,44 @@ describe('HTTP API', () => {
     expect(list.body.items).toHaveLength(1);
   });
 
+  it('GET /api/watchdog/stats 503 when disabled', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app).get('/api/watchdog/stats');
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('watchdog disabled');
+  });
+
+  it('GET /api/watchdog/stats in-process snapshot', async () => {
+    const stats = new WatchdogStats(1_000_000);
+    stats.recordPoll();
+    stats.recordObserve([
+      {
+        windowTitle: 'mlc',
+        composerId: 'abcd1234-0000',
+        model: 'Fast',
+        busy: true,
+        slowCount: 1,
+        reconnecting: false,
+        draftLen: 0,
+        draftHasToken: false,
+      },
+    ]);
+    const app = createApp(store, { ...noCdp, watchdogStats: stats });
+    const res = await request(app).get('/api/watchdog/stats');
+    expect(res.status).toBe(200);
+    expect(res.body.polls_total).toBe(1);
+    expect(res.body.windows[0].windowTitle).toBe('mlc');
+  });
+
+  it('GET /api/cursor/layout fixture windows', async () => {
+    const app = createApp(store, noCdp);
+    const res = await request(app).get('/api/cursor/layout');
+    expect(res.status).toBe(200);
+    expect(res.body.cdpOk).toBe(true);
+    expect(res.body.windows.length).toBe(4);
+    expect(res.body.windows.some((w: { shell: string }) => w.shell === 'agents-v3')).toBe(true);
+  });
+
   it('POST /api/send validates text', async () => {
     seedToken();
     await store.refresh();
@@ -155,5 +194,29 @@ describe('HTTP API', () => {
     expect(ok.body.text).toBe('hi');
     jest.runAllTimers();
     jest.useRealTimers();
+  });
+
+  it('POST /api/cursor/interact/step stop on busy fixture', async () => {
+    const app = createApp(store, { ...noCdp, cdp: CursorMock.port('busy') });
+    const r = await request(app)
+      .post('/api/cursor/interact/step')
+      .send({
+        label: 'stop',
+        windowTitle: 'cr - cr',
+        action: 'stop',
+        expect: 'agentIdle',
+        wait: { timeoutMs: 2000, intervalMs: 100 },
+      });
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.verdict).toBe('finished');
+  });
+
+  it('GET /api/cursor/interact/snapshot', async () => {
+    const app = createApp(store, noCdp);
+    const r = await request(app).get('/api/cursor/interact/snapshot?windowTitle=cr');
+    expect(r.status).toBe(200);
+    expect(r.body).toHaveProperty('agent');
+    expect(r.body).toHaveProperty('blockers');
   });
 });

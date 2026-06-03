@@ -44,4 +44,5 @@ export interface CdpPort {
     opts?: { workspaceHints?: string[] }
   ): Promise<ActiveComposer | null>;
   dismissModals(): Promise<DismissOutcome[]>;
+  stopAgent(opts?: { windowTitle?: string }): Promise<{ ok: boolean; reason: string }>;
 }

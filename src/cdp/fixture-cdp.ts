@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { composerPageOrder, type CdpTarget } from './client';
-import { fixturePageMeta } from './fixture-page-meta';
+import { fixturePageMeta, loadFixturePageMeta } from './fixture-page-meta';
 import type { ComposerAgentPageProbe } from './probes/composer-agent.v1';
 import {
   COMPOSER_AGENT_PROBE_ID,
@@ -9,6 +9,12 @@ import {
 } from './probes/composer-agent.v1';
 import type { ActiveComposer } from './active-composer';
 import { composerIdsMatch, filterTargetsByHints } from './window-match';
+import type { ComposerBarProbe } from './composer-bar';
+import { inferAgentRole } from './composer-bar';
+import type { ComposerPanelProbe } from './composer-panel';
+import { emptyComposerPanelControls, emptyComposerPanelInput } from './composer-panel';
+import type { WindowLayoutData } from '../cursor/layout/types';
+import { withAgentItemState } from '../cursor/layout/agent-item-state';
 import type { CdpPort, CdpSendResult, DismissOutcome } from './port';
 
 const FIXTURE_ACTIVE_COMPOSER = '11111111-1111-1111-1111-111111111111';
@@ -38,7 +44,8 @@ export type FixtureScenario =
   | 'switch-unverified'
   | 'modal-revert'
   | 'draft-stuck'
-  | 'multi-busy';
+  | 'multi-busy'
+  | 'slow';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 
@@ -56,6 +63,8 @@ export class FixtureCdp implements CdpPort {
   readonly isFixture = true;
   private modalOpen: boolean;
   private draftStuck: boolean;
+  private modelOverrides = new Map<string, string>();
+  private stoppedWindows = new Set<string>();
 
   constructor(private readonly scenario: FixtureScenario = 'idle') {
     this.modalOpen = scenario === 'modal-revert';
@@ -94,9 +103,12 @@ export class FixtureCdp implements CdpPort {
         return { title: t.title, ...NO_BAR };
       }
       const useBusy =
-        ((this.scenario === 'busy' || this.scenario === 'send-blocked') &&
+        !this.stoppedWindows.has(t.title || '') &&
+        (((this.scenario === 'busy' ||
+          this.scenario === 'send-blocked' ||
+          this.scenario === 'slow') &&
           /cr - cr - Cursor/i.test(t.title || '')) ||
-        (this.scenario === 'multi-busy' && this.pageHasComposer(t));
+          (this.scenario === 'multi-busy' && this.pageHasComposer(t)));
       const v = parseComposerAgentProbeValue(useBusy ? busy : idle)!;
       return { title: t.title, ...v };
     });
@@ -160,6 +172,155 @@ export class FixtureCdp implements CdpPort {
     return null;
   }
 
+  probeComposerBar(windowTitle: string): ComposerBarProbe {
+    const meta = fixturePageMeta(windowTitle);
+    if (!meta?.hasComposer || this.scenario === 'no-bar') {
+      return {
+        composerId: '',
+        model: '',
+        agentRole: 'default',
+        busy: false,
+        slowCount: 0,
+        reconnecting: false,
+        draftLen: 0,
+        draftHasToken: false,
+        pairs: [],
+      };
+    }
+    const reconnecting =
+      this.scenario === 'slow' &&
+      /reconnect/i.test(windowTitle) &&
+      !this.stoppedWindows.has(windowTitle);
+    const busy =
+      !this.stoppedWindows.has(windowTitle) &&
+      (reconnecting ||
+        (((this.scenario === 'busy' || this.scenario === 'send-blocked' || this.scenario === 'slow') &&
+          /cr - cr - Cursor/i.test(windowTitle)) ||
+          (this.scenario === 'multi-busy' && !!meta.hasComposer)));
+    const model = this.modelOverrides.get(meta.title) ?? meta.model ?? '';
+    const slowOnCr = this.scenario === 'slow' && /cr - cr - Cursor/i.test(windowTitle);
+    const slowCount = slowOnCr ? 1 : (meta.slowCount ?? 0);
+    const pairs =
+      slowOnCr || meta.slowPair
+        ? [{ preview: 'AGENT_TOKEN=…', slow: true }]
+        : [];
+    const agentRole = this.modelOverrides.has(meta.title)
+      ? inferAgentRole(model)
+      : inferAgentRole(model, meta.agentRole);
+    return {
+      composerId: meta.activeComposerId || '',
+      model,
+      agentRole,
+      busy,
+      slowCount,
+      reconnecting,
+      draftLen: meta.draftLen ?? 0,
+      draftHasToken: meta.draftHasToken ?? false,
+      pairs,
+    };
+  }
+
+  probeComposerPanel(windowTitle: string): ComposerPanelProbe {
+    const bar = this.probeComposerBar(windowTitle);
+    const meta = fixturePageMeta(windowTitle);
+    if (!meta?.hasComposer || this.scenario === 'no-bar') {
+      return {
+        ok: false,
+        reason: 'no-bar',
+        shell: 'none',
+        composerId: '',
+        agentRole: 'default',
+        runState: 'idle',
+        slowCount: 0,
+        input: emptyComposerPanelInput(),
+        model: { label: '', pickerOpen: false },
+        mode: null,
+        context: { pills: [], usagePct: null, usageVisible: false },
+        controls: emptyComposerPanelControls(),
+      };
+    }
+    const shell = meta.shell === 'agents-v3' ? 'agents-v3' : 'workbench-v2';
+    const runState = bar.busy ? (bar.slowCount ? 'slow' : 'busy') : bar.slowCount ? 'slow' : 'idle';
+    const base: ComposerPanelProbe = {
+      ok: true,
+      shell,
+      composerId: bar.composerId,
+      agentRole: bar.agentRole,
+      runState,
+      slowCount: bar.slowCount,
+      input: {
+        kind: runState !== 'idle' && shell === 'agents-v3' ? 'readonly' : 'editable',
+        placeholder: 'Plan, Build, / for commands, @ for context',
+        draftLen: bar.draftLen,
+        empty: bar.draftLen === 0,
+        focused: false,
+        hasToken: bar.draftHasToken,
+      },
+      model: { label: bar.model, pickerOpen: false },
+      mode: { id: 'agent', label: 'Agent' },
+      context: {
+        pills:
+          shell === 'agents-v3'
+            ? [{ label: '1 Terminal', kind: 'terminal', aria: 'Open terminals (1)' }]
+            : [],
+        usagePct: bar.draftLen > 0 ? 88 : 12,
+        usageVisible: shell === 'workbench-v2',
+      },
+      controls: {
+        mode: { id: 'agent', label: 'Agent', visible: true, enabled: true },
+        model: { label: bar.model, visible: !!bar.model, enabled: true },
+        submit: {
+          visible: runState === 'idle',
+          enabled: runState === 'idle' && bar.draftLen > 0,
+          label: 'Send',
+          sendMode: 'agent',
+        },
+        stop: {
+          visible: runState !== 'idle',
+          enabled: runState !== 'idle',
+          label: 'Stop',
+        },
+        plus: { visible: false, enabled: false, label: 'Attach' },
+      },
+    };
+    if (!meta.composerPanel) return base;
+    return {
+      ...base,
+      ...meta.composerPanel,
+      input: { ...base.input, ...(meta.composerPanel.input || {}) },
+      model: { ...base.model, ...(meta.composerPanel.model || {}) },
+      mode:
+        meta.composerPanel.mode === undefined
+          ? base.mode
+          : meta.composerPanel.mode === null
+            ? null
+            : { ...(base.mode || { id: 'agent', label: 'Agent' }), ...meta.composerPanel.mode },
+      context: { ...base.context, ...(meta.composerPanel.context || {}), pills: meta.composerPanel.context?.pills ?? base.context.pills },
+      controls: {
+        mode: { ...base.controls.mode, ...(meta.composerPanel.controls?.mode || {}) },
+        model: { ...base.controls.model, ...(meta.composerPanel.controls?.model || {}) },
+        submit: { ...base.controls.submit, ...(meta.composerPanel.controls?.submit || {}) },
+        stop: { ...base.controls.stop, ...(meta.composerPanel.controls?.stop || {}) },
+        plus: { ...base.controls.plus, ...(meta.composerPanel.controls?.plus || {}) },
+      },
+    };
+  }
+
+  setComposerModel(windowTitleNeedle: string, model: string): { ok: boolean; reason: string } {
+    const meta = loadFixturePageMeta().find(
+      (m) => windowTitleNeedle.includes(m.title) || m.title.includes(windowTitleNeedle)
+    );
+    if (!meta) return { ok: false, reason: 'window-not-found' };
+    this.modelOverrides.set(meta.title, model);
+    return { ok: true, reason: 'set' };
+  }
+
+  getComposerModel(windowTitleNeedle: string): string | null {
+    const meta = fixturePageMeta(windowTitleNeedle);
+    if (!meta) return null;
+    return this.modelOverrides.get(meta.title) ?? meta.model ?? null;
+  }
+
   async sendMessage(text: string, opts?: { windowTitle?: string }): Promise<CdpSendResult> {
     if (this.scenario === 'down') throw new Error('cdp unavailable');
     if (this.scenario === 'no-bar') throw new Error('composer no-bar');
@@ -220,6 +381,54 @@ export class FixtureCdp implements CdpPort {
 
   isModalOpen(): boolean {
     return this.modalOpen;
+  }
+
+  layoutDataForWindow(windowTitle: string): WindowLayoutData {
+    const meta = fixturePageMeta(windowTitle);
+    const layout: WindowLayoutData = JSON.parse(JSON.stringify(meta?.layout ?? {}));
+    if (layout.agentList) {
+      layout.agentList = layout.agentList.map((a) => withAgentItemState(a));
+    }
+    const busyCr =
+      !this.stoppedWindows.has(windowTitle) &&
+      (this.scenario === 'busy' || this.scenario === 'slow') &&
+      /cr - cr - Cursor/i.test(windowTitle);
+    if (busyCr) {
+      layout.thread = {
+        turnCount: 2,
+        slowCount: this.scenario === 'slow' ? 1 : 0,
+        activeTool: 'Worked for 8s',
+        turns: [
+          {
+            preview: 'AGENT_TOKEN=…',
+            slow: this.scenario === 'slow',
+            toolCalls: [{ label: 'Worked for 8s', state: 'running' }],
+          },
+        ],
+      };
+      layout.agentList = layout.agentList?.map((a) =>
+        withAgentItemState({ ...a, busy: true, active: true })
+      );
+    }
+    if (this.scenario === 'modal-revert' && this.modalOpen) {
+      layout.blockers = {
+        blockers: [{ kind: 'revert', label: 'Submit from a previous message?', blocking: true }],
+        sendBlocked: true,
+      };
+    }
+    return layout;
+  }
+
+  async stopAgent(opts?: { windowTitle?: string }): Promise<{ ok: boolean; reason: string }> {
+    const meta = loadFixturePageMeta().find(
+      (m) => !opts?.windowTitle || opts.windowTitle.includes(m.title) || m.title.includes(opts.windowTitle)
+    );
+    const title = meta?.title || opts?.windowTitle || '';
+    const bar = this.probeComposerBar(title);
+    if (!bar.busy) return { ok: false, reason: 'no-stop' };
+    this.stoppedWindows.add(title);
+    if (meta?.title) this.stoppedWindows.add(meta.title);
+    return { ok: true, reason: 'clicked-stop' };
   }
 
   clearComposerDraft(): void {

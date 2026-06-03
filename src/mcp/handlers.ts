@@ -12,6 +12,7 @@ import {
   parseOffset,
   trimMessages,
 } from './serialize';
+import { mcpAgentNext, mcpAgentState, mcpOvernightState, mcpSupervisor, mcpUsage } from './orchestration';
 
 export const MCP_TOOL_NAMES = [
   'cursor_agent_register',
@@ -27,6 +28,11 @@ export const MCP_TOOL_NAMES = [
   'cursor_cdp_status',
   'cursor_session',
   'cursor_db_info',
+  'cursor_supervisor',
+  'cursor_agent_next',
+  'cursor_usage',
+  'cursor_overnight_state',
+  'cursor_agent_state',
 ] as const;
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
@@ -213,6 +219,16 @@ export function createCrMcpHandlers(deps: CrMcpDeps) {
           }
           case 'cursor_db_info':
             return ok(deps.dbInfo());
+          case 'cursor_supervisor':
+            return ok(mcpSupervisor(args));
+          case 'cursor_agent_next':
+            return ok(mcpAgentNext(args));
+          case 'cursor_usage':
+            return ok(await mcpUsage());
+          case 'cursor_overnight_state':
+            return ok(mcpOvernightState(args));
+          case 'cursor_agent_state':
+            return ok(await mcpAgentState(args));
           default:
             return err(`unknown tool: ${name}`);
         }

@@ -4,6 +4,8 @@ import { switchComposerVerified } from './switch-composer';
 import { runProbeOnTargets } from './probes/registry';
 import { liveProbeActive, liveFindWindowForComposer } from './active-composer';
 import { liveDismissModals } from './dismiss-modals';
+import { parseStopAgentResult, STOP_AGENT_JS } from './composer-bar';
+import { evalOnPage } from './live-page';
 import { COMPOSER_AGENT_PROBE_ID } from './port';
 import type { ComposerAgentPageProbe } from './probes/composer-agent.v1';
 import type { ActiveComposer } from './active-composer';
@@ -60,6 +62,18 @@ export class LiveCdp implements CdpPort {
 
   async dismissModals(): Promise<DismissOutcome[]> {
     return liveDismissModals(this);
+  }
+
+  async stopAgent(opts?: { windowTitle?: string }): Promise<{ ok: boolean; reason: string }> {
+    if (!(await this.isAvailable())) return { ok: false, reason: 'cdp-unavailable' };
+    const targets = (await this.listTargets()).filter((t) => t.type === 'page');
+    const page = opts?.windowTitle
+      ? targets.find((t) => (t.title || '').includes(opts.windowTitle!))
+      : targets.find((t) => /Cursor/i.test(t.title || '') && !/Settings/i.test(t.title || ''));
+    if (!page) return { ok: false, reason: 'no-window' };
+    const raw = await evalOnPage(page, STOP_AGENT_JS, true);
+    const r = parseStopAgentResult(raw);
+    return { ok: r.ok, reason: r.reason };
   }
 }
 

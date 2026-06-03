@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     } else {
       console.log('hint: pass "flush" arg to attempt drain');
       console.log('hint: MCP drain runs every 2s inside cr-cursor MCP process (no separate daemon)');
-      console.log('hint: HTTP queue at :3847 is separate — needs npm run dev:server');
+      console.log('hint: HTTP queue at :3847 is separate ï¿½ needs npm run dev:server');
     }
   } finally {
     rt.close();

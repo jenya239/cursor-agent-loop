@@ -1,5 +1,105 @@
 "use strict";
 (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __esm = (fn, res) => function __init() {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  };
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+
+  // src/ui/views/render-progress.ts
+  var render_progress_exports = {};
+  __export(render_progress_exports, {
+    renderProgressHtml: () => renderProgressHtml
+  });
+  function ago(ms) {
+    if (ms == null) return "?";
+    const s = Math.floor(ms / 1e3);
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ago`;
+    return `${Math.floor(m / 60)}h ${m % 60}m ago`;
+  }
+  function fmtMsg(e) {
+    const msg = String(e.msg ?? "");
+    const parts = [msg];
+    if (e.role) parts.push(String(e.role));
+    if (e.step) parts.push(`step=${e.step}`);
+    if (e.phase) parts.push(`phase=${e.phase}`);
+    if (e.reason) parts.push(`(${e.reason})`);
+    if (e.err) parts.push(`err: ${String(e.err).slice(0, 80)}`);
+    if (e.codes) parts.push(String(e.codes));
+    return parts.join(" ");
+  }
+  function msgClass(msg) {
+    if (/error|fail|blocked|stuck/.test(msg)) return "pr-err";
+    if (/sent|recovery/.test(msg)) return "pr-ok";
+    if (/skip|cooldown|backoff/.test(msg)) return "pr-dim";
+    return "";
+  }
+  function renderProgressHtml(report) {
+    const loopBadge = report.loopRunning ? '<span class="pr-badge pr-badge-ok">loop running</span>' : '<span class="pr-badge pr-badge-err">loop STOPPED</span>';
+    const tickInfo = report.lastTickAt ? `last tick <b>${ago(report.lastTickAgoMs)}</b>` : "no ticks recorded";
+    const st = report.agentState;
+    let stateHtml = '<p class="pr-dim">no agent state</p>';
+    if (st) {
+      const phaseCls = /running/.test(st.phase) ? "pr-ok" : /stuck|incomplete/.test(st.phase) ? "pr-err" : "";
+      stateHtml = `
+      <div class="pr-state">
+        <span class="${phaseCls}"><b>${st.phase}</b></span>
+        ${st.promptKey ? `\uFFFD <b>${st.promptKey}</b>` : ""}
+        ${st.turnVerify ? `\uFFFD verify:${st.turnVerify}` : ""}
+        ${st.issue ? `<span class="pr-err"> ? ${st.issue}</span>` : ""}
+      </div>`;
+    }
+    const activeTracks = report.tracks.filter((t) => t.inProgress);
+    const closedCount = report.tracks.filter((t) => t.closed).length;
+    let trackHtml = "";
+    for (const t of activeTracks) {
+      const pct = t.total ? Math.round(t.done / t.total * 100) : 0;
+      const bar = `<div class="pr-bar"><div class="pr-bar-fill" style="width:${pct}%"></div></div>`;
+      trackHtml += `<div class="pr-track"><b>${t.file.replace("TRACK_", "").replace(".md", "")}</b> ${bar} ${t.done}/${t.total} steps \uFFFD pending: [${t.pendingSteps.join(",")}]</div>`;
+    }
+    if (!trackHtml) trackHtml = '<p class="pr-dim">no active tracks</p>';
+    trackHtml += `<p class="pr-dim">${closedCount} tracks closed total</p>`;
+    const actHtml = report.recentActivity.length ? report.recentActivity.map((e) => {
+      const t = String(e.at ?? "").replace("T", " ").replace(/\.\d+Z$/, "");
+      const cls = msgClass(String(e.msg ?? ""));
+      return `<div class="pr-log-row ${cls}"><span class="pr-log-time">${t}</span> ${fmtMsg(e)}</div>`;
+    }).join("") : '<p class="pr-dim">no recent activity</p>';
+    const errHtml = report.errors.length ? report.errors.map((e) => {
+      const t = String(e.at ?? "").replace("T", " ").replace(/\.\d+Z$/, "");
+      return `<div class="pr-log-row pr-err"><span class="pr-log-time">${t}</span> ${fmtMsg(e)}</div>`;
+    }).join("") : '<p class="pr-dim pr-ok-text">no errors in last 2h</p>';
+    return `
+<div class="pr-wrap">
+  <div class="pr-header">
+    ${loopBadge}
+    <span class="pr-dim">${tickInfo}</span>
+  </div>
+
+  <h3 class="pr-section">Agent state</h3>
+  ${stateHtml}
+
+  <h3 class="pr-section">Active track</h3>
+  ${trackHtml}
+
+  <h3 class="pr-section">Recent activity</h3>
+  <div class="pr-log">${actHtml}</div>
+
+  <h3 class="pr-section">Errors (2h)</h3>
+  <div class="pr-log">${errHtml}</div>
+</div>`;
+  }
+  var init_render_progress = __esm({
+    "src/ui/views/render-progress.ts"() {
+      "use strict";
+    }
+  });
+
   // src/ui/api/live-api.ts
   async function json(res) {
     if (!res.ok) {
@@ -476,18 +576,252 @@
     }
   }
 
+  // src/ui/views/render-layout-tree.ts
+  function renderNodeHeadHtml(node) {
+    const kind = `<span class="lk">${esc(node.kind)}</span>`;
+    const state = node.state ? ` <span class="ls">${esc(node.state)}</span>` : "";
+    const attrs = node.attrs && Object.keys(node.attrs).length ? ` <span class="la">${esc(
+      Object.entries(node.attrs).map(([k, v]) => `${k}=${v}`).join(" ")
+    )}</span>` : "";
+    return `<span class="ll">${esc(node.label)}</span> ${kind}${state}${attrs}`;
+  }
+  function renderNode(node, depth) {
+    const pad = depth * 12;
+    const head = renderNodeHeadHtml(node);
+    const lid = ` data-lid="${esc(node.id)}"`;
+    if (!node.children?.length) {
+      return `<div class="ln"${lid} style="padding-left:${pad}px">${head}</div>`;
+    }
+    const inner = node.children.map((c) => renderNode(c, depth + 1)).join("");
+    return `<details class="ln"${lid} style="padding-left:${pad}px" open><summary>${head}</summary>${inner}</details>`;
+  }
+  function renderLayoutTreeHtml(snap, err) {
+    if (err) {
+      return `<p class="err">${esc(err)}</p><p class="hint">npm run dev, CDP on :9222</p>`;
+    }
+    if (!snap) return '<p class="loading">loading...</p>';
+    if (!snap.cdpOk) return '<p class="err">CDP nedostupen</p>';
+    if (!snap.windows.length) return '<p class="hint">net okon</p>';
+    const summary = `<div class="wd-summary" data-layout-part="summary">okon ${snap.windows.length} &middot; ${new Date(snap.at).toISOString()}</div>`;
+    const trees = snap.windows.map((w) => {
+      const meta = `<div class="lw-head">${esc(w.title)} &middot; <code>${esc(w.shell)}</code> &middot; ${esc(w.kind)}</div>`;
+      return `<section class="lw" data-window-id="${esc(w.targetId)}">${meta}<div class="layout-tree">${renderNode(w.tree, 0)}</div></section>`;
+    }).join("");
+    return `<div data-layout-root>${summary}${trees}</div>`;
+  }
+
+  // src/ui/layout-tab.ts
+  async function loadLayoutSnapshot(fetchFn = fetch) {
+    const r = await fetchFn("/api/cursor/layout");
+    const ct = r.headers.get("content-type") || "";
+    if (!r.ok) {
+      if (ct.includes("json")) {
+        const body = await r.json();
+        return { snap: null, err: body.error || r.statusText };
+      }
+      return { snap: null, err: r.statusText };
+    }
+    return { snap: await r.json() };
+  }
+
+  // src/ui/views/patch-layout-tree.ts
+  function qid(id) {
+    return id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+  function collectLayoutOpenState(root) {
+    const out = /* @__PURE__ */ new Map();
+    for (const el of root.querySelectorAll("details[data-lid]")) {
+      const lid = el.dataset.lid;
+      if (lid) out.set(lid, el.open);
+    }
+    return out;
+  }
+  function defaultOpen(lid, openState) {
+    return openState.has(lid) ? openState.get(lid) : true;
+  }
+  function setHead(el, node) {
+    const html = renderNodeHeadHtml(node);
+    if (el.tagName === "DETAILS") {
+      const summary = el.querySelector(":scope > summary");
+      if (summary && summary.innerHTML !== html) summary.innerHTML = html;
+      return;
+    }
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+  function patchNode(parent, node, depth, openState) {
+    const pad = depth * 12;
+    const sel = `:scope > [data-lid="${qid(node.id)}"]`;
+    let el = parent.querySelector(sel);
+    const hasChildren = !!node.children?.length;
+    if (!hasChildren) {
+      if (!el || el.tagName !== "DIV") {
+        el?.remove();
+        el = document.createElement("div");
+        el.className = "ln";
+        el.dataset.lid = node.id;
+        parent.appendChild(el);
+      }
+      el.style.paddingLeft = `${pad}px`;
+      setHead(el, node);
+      return el;
+    }
+    if (!el || el.tagName !== "DETAILS") {
+      el?.remove();
+      el = document.createElement("details");
+      el.className = "ln";
+      el.dataset.lid = node.id;
+      el.appendChild(document.createElement("summary"));
+      parent.appendChild(el);
+    }
+    el.style.paddingLeft = `${pad}px`;
+    setHead(el, node);
+    el.open = defaultOpen(node.id, openState);
+    const keep = new Set(node.children.map((c) => c.id));
+    for (const child of [...el.querySelectorAll(":scope > [data-lid]")]) {
+      if (!keep.has(child.dataset.lid)) child.remove();
+    }
+    for (const child of node.children) {
+      el.appendChild(patchNode(el, child, depth + 1, openState));
+    }
+    return el;
+  }
+  function patchWindowSection(root, w, openState) {
+    const sel = `:scope > section.lw[data-window-id="${qid(w.targetId)}"]`;
+    let section = root.querySelector(sel);
+    if (!section) {
+      section = document.createElement("section");
+      section.className = "lw";
+      section.dataset.windowId = w.targetId;
+      section.innerHTML = `<div class="lw-head"></div><div class="layout-tree"></div>`;
+      root.appendChild(section);
+    }
+    const head = section.querySelector(".lw-head");
+    const headHtml = `${esc(w.title)} \uFFFD <code>${esc(w.shell)}</code> \uFFFD ${esc(w.kind)}`;
+    if (head.innerHTML !== headHtml) head.innerHTML = headHtml;
+    const tree = section.querySelector(".layout-tree");
+    const keep = new Set(collectIds(w.tree));
+    for (const child of [...tree.querySelectorAll(":scope > [data-lid]")]) {
+      if (!keep.has(child.dataset.lid)) child.remove();
+    }
+    patchNode(tree, w.tree, 0, openState);
+  }
+  function collectIds(node) {
+    const out = [node.id];
+    for (const c of node.children || []) out.push(...collectIds(c));
+    return out;
+  }
+  function patchLayoutTree(container, snap, err, openState = /* @__PURE__ */ new Map()) {
+    if (err || !snap || !snap.cdpOk || !snap.windows.length) {
+      container.innerHTML = renderLayoutTreeHtml(snap, err);
+      return;
+    }
+    let root = container.querySelector("[data-layout-root]");
+    if (!root) {
+      container.innerHTML = renderLayoutTreeHtml(snap);
+      return;
+    }
+    const summary = root.querySelector('[data-layout-part="summary"]');
+    if (summary) {
+      summary.innerHTML = `okon ${snap.windows.length} &middot; ${new Date(snap.at).toISOString()}`;
+    }
+    const keepWindows = new Set(snap.windows.map((w) => w.targetId));
+    for (const section of [...root.querySelectorAll(":scope > section.lw[data-window-id]")]) {
+      const id = section.dataset.windowId;
+      if (id && !keepWindows.has(id)) section.remove();
+    }
+    for (const w of snap.windows) {
+      patchWindowSection(root, w, openState);
+    }
+  }
+  function applyLayoutPanel(container, snap, err) {
+    patchLayoutTree(container, snap, err, collectLayoutOpenState(container));
+  }
+
   // src/ui/views/render-watchdog.ts
-  function renderWatchdogHtml(stats, err) {
-    if (err) return `<p class="err">${esc(err)}</p><p class="hint">npm run watchdog:start</p>`;
-    if (!stats) return '<p class="loading">\uFFFD</p>';
-    const rows = stats.windows.map(
-      (w) => `<tr><td>${esc(w.windowTitle)}</td><td>${esc(w.composerId.slice(0, 8))}</td><td>${esc(w.model || "\uFFFD")}</td><td>${w.busy ? "busy" : "idle"}</td><td>${w.slowCount || ""}</td><td>${w.draftHasToken ? w.draftLen : ""}</td></tr>`
-    ).join("");
-    return `<div class="wd-summary">
-  uptime ${Math.round(stats.uptime_ms / 1e3)}s \uFFFD polls ${stats.polls_total} \uFFFD slow? ${stats.slow_recoveries_total} \uFFFD err ${stats.errors_total}${stats.paused ? " \uFFFD paused" : ""}
-  ${stats.last_observe_at ? ` \uFFFD ${esc(stats.last_observe_at)}` : ""}
+  function phaseClass(phase) {
+    if (/stuck|incomplete|blocked/.test(phase)) return "wd-bad";
+    if (/done|idle/.test(phase)) return "wd-ok";
+    if (/pending|running/.test(phase)) return "wd-warn";
+    return "";
+  }
+  function renderAgentSection(agent, agentErr) {
+    if (agentErr) {
+      return `<p class="hint wd-agent-err">${esc(agentErr)}</p>`;
+    }
+    if (!agent?.agents?.length) return "";
+    const rows = agent.agents.map((a) => {
+      const cls = phaseClass(a.phase);
+      const issue = a.issue ? esc(a.issue) : "";
+      const flags = [a.reconnecting ? "reconnect" : "", a.busy ? "busy" : ""].filter(Boolean).join(" ");
+      return `<tr class="${cls}"><td>${esc(a.targetId)}</td><td>${esc(a.phase)}</td><td>${esc(a.turnVerify)}</td><td>${esc(a.promptKey || "")}</td><td>${flags}</td><td>${issue}</td></tr>`;
+    }).join("");
+    const log = (agent.log || []).slice(-12).reverse().map((t) => {
+      const from = t.from ? `${esc(t.from)}\u2192` : "";
+      const note = t.note ? ` \xB7 ${esc(t.note)}` : "";
+      const key = t.promptKey ? ` \xB7 ${esc(t.promptKey)}` : "";
+      return `<li><span class="wd-log-at">${esc(t.at.slice(11, 19))}</span> ${esc(t.targetId)} ${from}${esc(t.to)}${key}${note}</li>`;
+    }).join("");
+    return `<h3 class="wd-h">orch</h3>
+<table class="wd-table wd-agent"><thead><tr><th>target</th><th>phase</th><th>verify</th><th>prompt</th><th>flags</th><th>issue</th></tr></thead><tbody>${rows}</tbody></table>
+<h3 class="wd-h">transitions</h3>
+<ul class="wd-log">${log || '<li class="hint">\u2014</li>'}</ul>`;
+  }
+  function renderWatchdogHtml(stats, err, agent, agentErr) {
+    const agentBlock = renderAgentSection(agent, agentErr);
+    if (err) {
+      return `${agentBlock}<p class="err">${esc(err)}</p><p class="hint">npm run dev (watchdog in-process)</p>`;
+    }
+    if (!stats) return `${agentBlock}<p class="loading">...</p>`;
+    const rows = stats.windows.map((w) => {
+      const cls = w.reconnecting ? "wd-reconnect" : w.busy && w.slowCount ? "wd-slow" : "";
+      const recon = w.reconnecting ? "yes" : "";
+      return `<tr class="${cls}"><td>${esc(w.windowTitle)}</td><td>${esc(w.composerId.slice(0, 8))}</td><td>${esc(w.model || "-")}</td><td>${w.busy ? "busy" : "idle"}</td><td>${recon}</td><td>${w.usagePct != null ? w.usagePct + "%" : ""}</td><td>${w.slowCount || ""}</td><td>${w.draftHasToken ? w.draftLen : ""}</td></tr>`;
+    }).join("");
+    const usageLine = stats.usageMax != null ? ` usageMax ${stats.usageMax}%` : "";
+    return `${agentBlock}<div class="wd-summary">
+  uptime ${Math.round(stats.uptime_ms / 1e3)}s | polls ${stats.polls_total} | slow ${stats.slow_recoveries_total} | err ${stats.errors_total}${stats.paused ? " | paused" : ""}${usageLine}
+  ${stats.last_observe_at ? ` | ${esc(stats.last_observe_at)}` : ""}
 </div>
-<table class="wd-table"><thead><tr><th>window</th><th>composer</th><th>model</th><th>agent</th><th>slow</th><th>draft</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="hint">??? ????</td></tr>'}</tbody></table>`;
+<table class="wd-table"><thead><tr><th>window</th><th>composer</th><th>model</th><th>agent</th><th>recon</th><th>usage</th><th>slow</th><th>draft</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="hint">no windows</td></tr>'}</tbody></table>`;
+  }
+
+  // src/ui/watchdog-tab.ts
+  async function fetchJson(fetchFn, url) {
+    try {
+      const r = await fetchFn(url);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
+    }
+  }
+  async function loadWatchdogPanelHtml(fetchFn = fetch) {
+    const [wdRes, agent] = await Promise.all([
+      fetchFn("/api/watchdog/stats"),
+      fetchJson(fetchFn, "/api/agent/state?refresh=1")
+    ]);
+    const ct = wdRes.headers.get("content-type") || "";
+    if (!wdRes.ok) {
+      if (wdRes.status === 404) {
+        return renderWatchdogHtml(null, "\u043D\u0435\u0442 /api/watchdog/stats \u2014 \u043F\u0435\u0440\u0435\u0437\u0430\u043F\u0443\u0441\u0442\u0438 npm run dev", agent);
+      }
+      if (ct.includes("json")) {
+        const body = await wdRes.json();
+        return renderWatchdogHtml(null, body.error || wdRes.statusText, agent);
+      }
+      return renderWatchdogHtml(null, wdRes.statusText, agent);
+    }
+    return renderWatchdogHtml(await wdRes.json(), void 0, agent);
+  }
+
+  // src/ui/ui-tabs.ts
+  function tabVisibility(tab) {
+    return {
+      layoutHidden: tab !== "chats",
+      watchdogHidden: tab !== "watchdog",
+      layoutPanelHidden: tab !== "layout",
+      progressHidden: tab !== "progress"
+    };
   }
 
   // src/ui/app.ts
@@ -513,18 +847,42 @@
     const layoutEl = document.getElementById("layout");
     const tabChats = document.getElementById("tab-chats");
     const tabWatchdog = document.getElementById("tab-watchdog");
+    const tabLayout = document.getElementById("tab-layout");
+    const tabProgress = document.getElementById("tab-progress");
     const watchdogPanel = document.getElementById("watchdog-panel");
     const watchdogBody = document.getElementById("watchdog-body");
+    const cursorLayoutPanel = document.getElementById("cursor-layout-panel");
+    const cursorLayoutBody = document.getElementById("cursor-layout-body");
+    const progressPanel = document.getElementById("progress-panel");
+    const progressBody = document.getElementById("progress-body");
     let uiTab = "chats";
     let watchdogTimer = null;
+    let layoutTimer = null;
+    let progressTimer = null;
+    let layoutFetch = null;
     let lastSendAt = 0;
     let lastSendText = "";
+    async function refreshProgress() {
+      try {
+        const r = await fetch("/api/progress");
+        if (!r.ok) return;
+        const data = await r.json();
+        const { renderProgressHtml: renderProgressHtml2 } = await Promise.resolve().then(() => (init_render_progress(), render_progress_exports));
+        progressBody.innerHTML = renderProgressHtml2(data);
+      } catch {
+      }
+    }
     function setUiTab(tab) {
       uiTab = tab;
       tabChats.classList.toggle("active", tab === "chats");
       tabWatchdog.classList.toggle("active", tab === "watchdog");
-      layoutEl.hidden = tab !== "chats";
-      watchdogPanel.hidden = tab !== "watchdog";
+      tabLayout.classList.toggle("active", tab === "layout");
+      tabProgress.classList.toggle("active", tab === "progress");
+      const vis = tabVisibility(tab);
+      layoutEl.hidden = vis.layoutHidden;
+      watchdogPanel.hidden = vis.watchdogHidden;
+      cursorLayoutPanel.hidden = vis.layoutPanelHidden;
+      progressPanel.hidden = vis.progressHidden;
       if (tab === "watchdog") {
         void refreshWatchdog();
         if (!watchdogTimer) watchdogTimer = setInterval(() => void refreshWatchdog(), 4e3);
@@ -532,27 +890,51 @@
         clearInterval(watchdogTimer);
         watchdogTimer = null;
       }
+      if (tab === "layout") {
+        void refreshLayout();
+        if (!layoutTimer) layoutTimer = setInterval(() => void refreshLayout(), 8e3);
+      } else if (layoutTimer) {
+        clearInterval(layoutTimer);
+        layoutTimer = null;
+      }
+      if (tab === "progress") {
+        void refreshProgress();
+        if (!progressTimer) progressTimer = setInterval(() => void refreshProgress(), 5e3);
+      } else if (progressTimer) {
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
+    }
+    async function refreshLayout() {
+      if (layoutFetch) return layoutFetch;
+      const first = !cursorLayoutBody.querySelector("[data-layout-root]");
+      if (first) cursorLayoutBody.innerHTML = '<p class="loading">CDP layout...</p>';
+      layoutFetch = (async () => {
+        try {
+          const { snap, err } = await loadLayoutSnapshot();
+          applyLayoutPanel(cursorLayoutBody, snap, err);
+        } catch (e) {
+          cursorLayoutBody.innerHTML = renderLayoutTreeHtml(
+            null,
+            e instanceof Error ? e.message : String(e)
+          );
+        } finally {
+          layoutFetch = null;
+        }
+      })();
+      return layoutFetch;
     }
     async function refreshWatchdog() {
       try {
-        const r = await fetch("/api/watchdog/stats");
-        const ct = r.headers.get("content-type") || "";
-        if (!r.ok) {
-          if (r.status === 404) {
-            watchdogBody.innerHTML = renderWatchdogHtml(null, "\u043D\u0435\u0442 /api/watchdog/stats \u2014 \u043F\u0435\u0440\u0435\u0437\u0430\u043F\u0443\u0441\u0442\u0438 npm run dev");
-            return;
-          }
-          const body = ct.includes("json") ? await r.json() : { error: r.statusText };
-          watchdogBody.innerHTML = renderWatchdogHtml(null, body.error || r.statusText);
-          return;
-        }
-        watchdogBody.innerHTML = renderWatchdogHtml(await r.json());
+        watchdogBody.innerHTML = await loadWatchdogPanelHtml();
       } catch (e) {
         watchdogBody.innerHTML = renderWatchdogHtml(null, e instanceof Error ? e.message : String(e));
       }
     }
     tabChats.addEventListener("click", () => setUiTab("chats"));
     tabWatchdog.addEventListener("click", () => setUiTab("watchdog"));
+    tabLayout.addEventListener("click", () => setUiTab("layout"));
+    tabProgress.addEventListener("click", () => setUiTab("progress"));
     function saveLastChat(id) {
       try {
         localStorage.setItem(LS_LAST_CHAT, id);

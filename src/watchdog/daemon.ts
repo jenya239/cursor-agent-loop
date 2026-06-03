@@ -1,7 +1,8 @@
 import type { WatchdogActions } from './actions';
 import type { WatchdogStats } from './stats';
-import { SlowTracker } from './slow-tracker';
-import { slowWindowsDue, watchdogSlowMs, watchdogSlowRecoverEnabled } from './slow-recover';
+import { StuckTracker } from './stuck-tracker';
+import { stuckWindowsDue, watchdogBusyMs, watchdogReconnectMs, watchdogSlowMs, watchdogSlowRecoverEnabled } from './slow-recover';
+import { noteAgentRecover, targetForWindowTitle } from '../cursor/agent-state';
 
 export interface DaemonControl {
   tick(): Promise<void>;
@@ -14,8 +15,10 @@ export interface DaemonOpts {
   actions: WatchdogActions;
   stats: WatchdogStats;
   pollMs: number;
-  slowTracker?: SlowTracker;
+  slowTracker?: StuckTracker;
   slowMs?: number;
+  busyMs?: number;
+  reconnectMs?: number;
   slowRecover?: boolean;
   setIntervalFn?: typeof setInterval;
   clearIntervalFn?: typeof clearInterval;
@@ -25,13 +28,16 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
   const { actions, stats, pollMs } = opts;
   const setIv = opts.setIntervalFn ?? setInterval;
   const clearIv = opts.clearIntervalFn ?? clearInterval;
-  const tracker = opts.slowTracker ?? new SlowTracker();
+  const tracker = opts.slowTracker ?? new StuckTracker();
   const slowMs = opts.slowMs ?? watchdogSlowMs();
+  const busyMs = opts.busyMs ?? watchdogBusyMs();
+  const reconnectMs = opts.reconnectMs ?? watchdogReconnectMs();
   const slowRecover = opts.slowRecover ?? watchdogSlowRecoverEnabled();
   let timer: ReturnType<typeof setInterval> | null = null;
 
   async function tick(): Promise<void> {
     if (stats.snapshot().paused) return;
+    stats.decayErrors();
     stats.recordPoll();
     try {
       const windows = await actions.observe();
@@ -41,6 +47,7 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
           composerId: w.composerId,
           model: w.model,
           busy: w.busy,
+          reconnecting: w.reconnecting,
           slowCount: w.slowCount,
           draftLen: w.draftLen,
           draftHasToken: w.draftHasToken,
@@ -54,10 +61,17 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
       }
 
       if (slowRecover) {
-        for (const title of slowWindowsDue(windows, tracker, slowMs)) {
+        for (const title of stuckWindowsDue(windows, tracker, { slowMs, busyMs, reconnectMs })) {
           const r = await actions.recoverSlow(title);
           if (r) {
             stats.recordSlowRecover(title, { ...r.outcome });
+            const t = targetForWindowTitle(title);
+            if (t) {
+              noteAgentRecover(
+                t.id,
+                r.outcome.resent ? 'stop+resubmit' : r.outcome.submitted ? 'resubmit' : 'stop'
+              );
+            }
             tracker.clear(title);
           }
         }

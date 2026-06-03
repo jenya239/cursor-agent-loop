@@ -46,6 +46,13 @@ describe('WatchdogStats', () => {
     expect(log[99].message).toBe('e109');
   });
 
+  it('decayErrors clears stale counter', () => {
+    const s = new WatchdogStats(0);
+    s.recordError('old');
+    s.decayErrors(Date.now() + 31 * 60_000);
+    expect(s.snapshot().errors_total).toBe(0);
+  });
+
   it('pause flag', () => {
     const s = new WatchdogStats(0);
     s.setPaused(true);

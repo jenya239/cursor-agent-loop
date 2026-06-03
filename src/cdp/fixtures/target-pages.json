@@ -1,17 +1,200 @@
 [
   {
     "title": "cr - cr - Cursor",
+    "shell": "workbench-v2",
     "hasComposer": true,
-    "activeComposerId": "11111111-1111-1111-1111-111111111111"
+    "activeComposerId": "11111111-1111-1111-1111-111111111111",
+    "model": "Composer 1",
+    "agentRole": "default",
+    "layout": {
+      "activityBar": ["Explorer", "Search", "Source Control", "Agents", "Extensions"],
+      "activeActivity": "Agents",
+      "sidebarOpen": true,
+      "sidebarView": "Agents",
+      "panelOpen": false,
+      "editorTabs": [{ "label": "cr", "active": true }],
+      "composerPaneOpen": true,
+      "composerHistory": [
+        {
+          "composerId": "11111111-1111-1111-1111-111111111111",
+          "label": "cr Header index chat",
+          "active": true
+        }
+      ],
+      "agentList": [
+        {
+          "composerId": "11111111-1111-1111-1111-111111111111",
+          "label": "cr worker",
+          "active": true,
+          "busy": false,
+          "state": "active",
+          "agentRole": "default"
+        }
+      ],
+      "thread": {
+        "turnCount": 2,
+        "slowCount": 0,
+        "activeTool": null,
+        "turns": [
+          {
+            "preview": "add layout tab",
+            "slow": false,
+            "toolCalls": [{ "label": "FinishedRead server.ts", "state": "finished", "detail": "server.ts" }]
+          }
+        ]
+      },
+      "blockers": { "blockers": [], "sendBlocked": false },
+      "header": { "title": "", "environment": "", "workspace": "cr", "pills": [], "menuActions": [] },
+      "panelContent": { "open": false, "activeTab": null, "tabs": [], "problemsCount": 0, "terminalCount": null },
+      "editorArea": { "groupCount": 1, "activeTab": "cr", "reviewOpen": false, "reviewPreview": null }
+    }
   },
   {
     "title": "schema.json - nord (Workspace) - Cursor",
+    "shell": "workbench-v2",
     "hasComposer": true,
-    "activeComposerId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    "activeComposerId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "model": "Composer 1",
+    "agentRole": "default",
+    "layout": {
+      "activityBar": ["Explorer", "Search", "Agents"],
+      "activeActivity": "Explorer",
+      "sidebarOpen": true,
+      "sidebarView": "Explorer",
+      "panelOpen": true,
+      "panelView": "Terminal",
+      "editorTabs": [{ "label": "schema.json", "active": true }],
+      "composerPaneOpen": true,
+      "composerHistory": [
+        {
+          "composerId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          "label": "nord schema chat",
+          "active": true
+        }
+      ],
+      "panelContent": {
+        "open": true,
+        "activeTab": "Terminal",
+        "tabs": [
+          { "label": "Terminal", "active": true },
+          { "label": "Problems", "active": false, "badge": "0" }
+        ],
+        "problemsCount": 0,
+        "terminalCount": 1
+      },
+      "editorArea": { "groupCount": 1, "activeTab": "schema.json", "reviewOpen": false, "reviewPreview": null },
+      "blockers": { "blockers": [], "sendBlocked": false }
+    }
   },
   {
     "title": "plan.md - mlc - Cursor",
+    "shell": "workbench-v2",
     "hasComposer": true,
-    "activeComposerId": "f8e0a645-1610-4a1e-b19f-63f502235a2e"
+    "activeComposerId": "f8e0a645-1610-4a1e-b19f-63f502235a2e",
+    "model": "claude-4.6-opus-medium-thinking",
+    "agentRole": "supervisor",
+    "layout": {
+      "activityBar": ["Explorer", "Agents"],
+      "activeActivity": "Agents",
+      "sidebarOpen": true,
+      "sidebarView": "Agents",
+      "panelOpen": false,
+      "editorTabs": [{ "label": "plan.md", "active": true }],
+      "composerPaneOpen": true,
+      "composerHistory": [
+        {
+          "composerId": "f8e0a645-1610-4a1e-b19f-63f502235a2e",
+          "label": "mlc STEP supervisor",
+          "active": true
+        }
+      ],
+      "agentList": [
+        {
+          "composerId": "f8e0a645-1610-4a1e-b19f-63f502235a2e",
+          "label": "mlc supervisor",
+          "active": true,
+          "busy": true,
+          "state": "busy",
+          "agentRole": "supervisor"
+        }
+      ],
+      "thread": {
+        "turnCount": 3,
+        "slowCount": 1,
+        "activeTool": "Worked for 12s",
+        "turns": [
+          {
+            "preview": "supervisor plan STEP",
+            "slow": true,
+            "toolCalls": [{ "label": "Worked for 12s", "state": "running" }]
+          }
+        ]
+      },
+      "editorArea": {
+        "groupCount": 1,
+        "activeTab": "plan.md",
+        "reviewOpen": true,
+        "reviewPreview": "Read types.ts"
+      },
+      "blockers": { "blockers": [], "sendBlocked": false }
+    }
+  },
+  {
+    "title": "Cursor Agents",
+    "shell": "agents-v3",
+    "hasComposer": true,
+    "activeComposerId": "f8e0a645-1610-4a1e-b19f-63f502235a2e",
+    "model": "claude-4.6-opus-medium-thinking",
+    "agentRole": "supervisor",
+    "layout": {
+      "menus": ["File", "Edit", "View", "Agents"],
+      "agentList": [
+        {
+          "composerId": "f8e0a645-1610-4a1e-b19f-63f502235a2e",
+          "label": "mlc supervisor",
+          "active": true,
+          "busy": true,
+          "state": "busy",
+          "agentRole": "supervisor"
+        },
+        {
+          "composerId": "11111111-1111-1111-1111-111111111111",
+          "label": "cr worker",
+          "active": false,
+          "busy": false,
+          "state": "idle",
+          "agentRole": "default"
+        }
+      ],
+      "composerHistory": [
+        {
+          "composerId": "f8e0a645-1610-4a1e-b19f-63f502235a2e",
+          "label": "Review pipeline",
+          "active": true
+        }
+      ],
+      "header": {
+        "title": "Agent in workspaces/mlc",
+        "environment": "local",
+        "workspace": "mlc",
+        "pills": [{ "label": "1 Terminal", "kind": "terminal", "aria": "Open terminals (1)" }],
+        "menuActions": ["New Agent"]
+      },
+      "thread": {
+        "turnCount": 4,
+        "slowCount": 0,
+        "activeTool": "Finished2 background tasks",
+        "turns": [
+          {
+            "preview": "Review pipeline",
+            "slow": false,
+            "toolCalls": [
+              { "label": "Finished2 background tasks", "state": "finished", "detail": "2 background tasks" }
+            ]
+          }
+        ]
+      },
+      "blockers": { "blockers": [], "sendBlocked": false }
+    }
   }
 ]

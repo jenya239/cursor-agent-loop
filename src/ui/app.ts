@@ -12,7 +12,12 @@ import { esc, shortPath } from './views/dom';
 import { renderChatHtml } from './views/render-chat';
 import { renderListHtml } from './views/render-list';
 import { applyAgentPanel } from './views/render-agent-panel';
-import { renderWatchdogHtml, type WatchdogStatsView } from './views/render-watchdog';
+import { loadLayoutSnapshot } from './layout-tab';
+import { applyLayoutPanel } from './views/patch-layout-tree';
+import { renderLayoutTreeHtml } from './views/render-layout-tree';
+import { renderWatchdogHtml } from './views/render-watchdog';
+import { loadWatchdogPanelHtml } from './watchdog-tab';
+import { tabVisibility, type UiTab } from './ui-tabs';
 import { isComposerMismatch } from './state/selectors';
 import { agentBus } from './agent-bus';
 
@@ -40,21 +45,45 @@ export function boot(): void {
   const layoutEl = document.getElementById('layout')!;
   const tabChats = document.getElementById('tab-chats') as HTMLButtonElement;
   const tabWatchdog = document.getElementById('tab-watchdog') as HTMLButtonElement;
+  const tabLayout = document.getElementById('tab-layout') as HTMLButtonElement;
+  const tabProgress = document.getElementById('tab-progress') as HTMLButtonElement;
   const watchdogPanel = document.getElementById('watchdog-panel')!;
   const watchdogBody = document.getElementById('watchdog-body')!;
+  const cursorLayoutPanel = document.getElementById('cursor-layout-panel')!;
+  const cursorLayoutBody = document.getElementById('cursor-layout-body')!;
+  const progressPanel = document.getElementById('progress-panel')!;
+  const progressBody = document.getElementById('progress-body')!;
 
-  let uiTab: 'chats' | 'watchdog' = 'chats';
+  let uiTab: UiTab = 'chats';
   let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  let layoutTimer: ReturnType<typeof setInterval> | null = null;
+  let progressTimer: ReturnType<typeof setInterval> | null = null;
+  let layoutFetch: Promise<void> | null = null;
 
   let lastSendAt = 0;
   let lastSendText = '';
 
-  function setUiTab(tab: 'chats' | 'watchdog') {
+  async function refreshProgress() {
+    try {
+      const r = await fetch('/api/progress');
+      if (!r.ok) return;
+      const data = await r.json() as unknown;
+      const { renderProgressHtml } = await import('./views/render-progress');
+      progressBody.innerHTML = renderProgressHtml(data as Parameters<typeof renderProgressHtml>[0]);
+    } catch { /* ignore */ }
+  }
+
+  function setUiTab(tab: UiTab) {
     uiTab = tab;
     tabChats.classList.toggle('active', tab === 'chats');
     tabWatchdog.classList.toggle('active', tab === 'watchdog');
-    layoutEl.hidden = tab !== 'chats';
-    watchdogPanel.hidden = tab !== 'watchdog';
+    tabLayout.classList.toggle('active', tab === 'layout');
+    tabProgress.classList.toggle('active', tab === 'progress');
+    const vis = tabVisibility(tab);
+    layoutEl.hidden = vis.layoutHidden;
+    watchdogPanel.hidden = vis.watchdogHidden;
+    cursorLayoutPanel.hidden = vis.layoutPanelHidden;
+    progressPanel.hidden = vis.progressHidden;
     if (tab === 'watchdog') {
       void refreshWatchdog();
       if (!watchdogTimer) watchdogTimer = setInterval(() => void refreshWatchdog(), 4000);
@@ -62,24 +91,45 @@ export function boot(): void {
       clearInterval(watchdogTimer);
       watchdogTimer = null;
     }
+    if (tab === 'layout') {
+      void refreshLayout();
+      if (!layoutTimer) layoutTimer = setInterval(() => void refreshLayout(), 8000);
+    } else if (layoutTimer) {
+      clearInterval(layoutTimer);
+      layoutTimer = null;
+    }
+    if (tab === 'progress') {
+      void refreshProgress();
+      if (!progressTimer) progressTimer = setInterval(() => void refreshProgress(), 5000);
+    } else if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+  }
+
+  async function refreshLayout() {
+    if (layoutFetch) return layoutFetch;
+    const first = !cursorLayoutBody.querySelector('[data-layout-root]');
+    if (first) cursorLayoutBody.innerHTML = '<p class="loading">CDP layout...</p>';
+    layoutFetch = (async () => {
+      try {
+        const { snap, err } = await loadLayoutSnapshot();
+        applyLayoutPanel(cursorLayoutBody, snap, err);
+      } catch (e) {
+        cursorLayoutBody.innerHTML = renderLayoutTreeHtml(
+          null,
+          e instanceof Error ? e.message : String(e)
+        );
+      } finally {
+        layoutFetch = null;
+      }
+    })();
+    return layoutFetch;
   }
 
   async function refreshWatchdog() {
     try {
-      const r = await fetch('/api/watchdog/stats');
-      const ct = r.headers.get('content-type') || '';
-      if (!r.ok) {
-        if (r.status === 404) {
-          watchdogBody.innerHTML = renderWatchdogHtml(null, 'нет /api/watchdog/stats — перезапусти npm run dev');
-          return;
-        }
-        const body = ct.includes('json')
-          ? ((await r.json()) as { error?: string })
-          : { error: r.statusText };
-        watchdogBody.innerHTML = renderWatchdogHtml(null, body.error || r.statusText);
-        return;
-      }
-      watchdogBody.innerHTML = renderWatchdogHtml((await r.json()) as WatchdogStatsView);
+      watchdogBody.innerHTML = await loadWatchdogPanelHtml();
     } catch (e) {
       watchdogBody.innerHTML = renderWatchdogHtml(null, e instanceof Error ? e.message : String(e));
     }
@@ -87,6 +137,8 @@ export function boot(): void {
 
   tabChats.addEventListener('click', () => setUiTab('chats'));
   tabWatchdog.addEventListener('click', () => setUiTab('watchdog'));
+  tabLayout.addEventListener('click', () => setUiTab('layout'));
+  tabProgress.addEventListener('click', () => setUiTab('progress'));
 
   function saveLastChat(id: string) {
     try {

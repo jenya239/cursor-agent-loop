@@ -46,6 +46,13 @@ export class SendQueue {
     return this.items.shift();
   }
 
+  remove(id: string): boolean {
+    const i = this.items.findIndex((x) => x.id === id);
+    if (i < 0) return false;
+    this.items.splice(i, 1);
+    return true;
+  }
+
   unshift(item: QueuedSend): void {
     this.items.unshift(item);
   }

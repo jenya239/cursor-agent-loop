@@ -105,6 +105,8 @@ npm run mcp   # stdio (для отладки)
 
 ```bash
 npm run dev   # watchdog in-process, tab watchdog в UI
+# CR_WATCHDOG_SLOW_MS=90000  — slow label / pair.slow
+# CR_WATCHDOG_BUSY_MS=600000   — busy без slow (default 10m)
 ```
 
 Standalone (опционально): `npm run watchdog:start` — отдельный socket, если server без watchdog.

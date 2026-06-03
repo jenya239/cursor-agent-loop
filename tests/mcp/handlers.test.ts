@@ -56,6 +56,9 @@ describe('MCP handlers', () => {
     expect(MCP_TOOL_NAMES).toContain('cursor_agent_resolve');
     expect(MCP_TOOL_NAMES).toContain('cursor_enqueue_send');
     expect(MCP_TOOL_NAMES).toContain('cursor_session');
+    expect(MCP_TOOL_NAMES).toContain('cursor_supervisor');
+    expect(MCP_TOOL_NAMES).toContain('cursor_agent_next');
+    expect(MCP_TOOL_NAMES).toContain('cursor_agent_state');
     expect(MCP_TOOL_NAMES).not.toContain('cursor_enqueue_self');
     expect(MCP_TOOL_NAMES).not.toContain('cursor_active_composer');
   });

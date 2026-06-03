@@ -19,5 +19,12 @@
     "type": "page",
     "url": "vscode-file://vscode-app/usr/share/cursor/resources/app/out/vs/code/electron-sandbox/workbench/workbench.html",
     "webSocketDebuggerUrl": "ws://fixture/mlc"
+  },
+  {
+    "id": "page-agents",
+    "title": "Cursor Agents",
+    "type": "page",
+    "url": "vscode-file://vscode-app/usr/share/cursor/resources/app/out/vs/code/electron-sandbox/workbench/workbench.html",
+    "webSocketDebuggerUrl": "ws://fixture/agents"
   }
 ]
