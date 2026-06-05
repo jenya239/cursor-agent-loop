@@ -1,5 +1,8 @@
 node_modules/
 dist/
+db/cr.db
+db/cr.db-wal
+db/cr.db-shm
 *.log
 src/cdp/fixtures/recorded/
 test-results/
