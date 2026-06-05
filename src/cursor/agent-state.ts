@@ -76,6 +76,10 @@ export function agentStatePath(): string {
 }
 
 export function targetForWindowTitle(title: string): AgentTarget | null {
+  if (title.startsWith('tmux:')) {
+    const targetId = title.slice('tmux:'.length);
+    return AGENT_TARGETS.find((target) => target.id === targetId) ?? null;
+  }
   const low = title.toLowerCase();
   return AGENT_TARGETS.find((t) => low.includes(t.windowHint.toLowerCase())) ?? null;
 }

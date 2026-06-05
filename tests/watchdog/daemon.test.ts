@@ -4,13 +4,22 @@ import type { WatchdogActions } from '../../src/watchdog/actions';
 import { StuckTracker } from '../../src/watchdog/stuck-tracker';
 
 function actions(partial?: Partial<WatchdogActions>): WatchdogActions {
-  return {
+  const base: WatchdogActions = {
     dismissModals: async () => [],
     drainQueue: async () => ({ sent: 0, remaining: 0 }),
     observe: async () => [],
     recoverSlow: async () => null,
+    batchTick: async () => ({ windows: [], dismissed: [] }),
     ...partial,
   };
+  // Wire batchTick to call observe/dismissModals unless explicitly overridden
+  if (!partial?.batchTick) {
+    base.batchTick = async () => ({
+      windows: await base.observe(),
+      dismissed: await base.dismissModals(),
+    });
+  }
+  return base;
 }
 
 describe('startDaemon', () => {

@@ -15,6 +15,8 @@ export interface DaemonOpts {
   actions: WatchdogActions;
   stats: WatchdogStats;
   pollMs: number;
+  idlePollMs?: number;
+  idleAfterTicks?: number;
   slowTracker?: StuckTracker;
   slowMs?: number;
   busyMs?: number;
@@ -33,14 +35,42 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
   const busyMs = opts.busyMs ?? watchdogBusyMs();
   const reconnectMs = opts.reconnectMs ?? watchdogReconnectMs();
   const slowRecover = opts.slowRecover ?? watchdogSlowRecoverEnabled();
+  // Adaptive interval: after N consecutive idle ticks, stretch to idlePollMs
+  const idlePollMs = opts.idlePollMs ?? (Number(process.env.CR_WATCHDOG_IDLE_POLL_MS) || Math.min(pollMs * 5, 20000));
+  const idleAfterTicks = opts.idleAfterTicks ?? 3;
+  let consecutiveIdle = 0;
+  let currentPollMs = pollMs;
   let timer: ReturnType<typeof setInterval> | null = null;
+
+  function restartInterval(ms: number): void {
+    if (timer) clearIv(timer);
+    timer = setIv(() => void tick(), ms);
+  }
+
+  function setAdaptiveInterval(isIdle: boolean): void {
+    if (isIdle) {
+      consecutiveIdle++;
+      if (consecutiveIdle >= idleAfterTicks && currentPollMs !== idlePollMs) {
+        currentPollMs = idlePollMs;
+        restartInterval(currentPollMs);
+      }
+    } else {
+      consecutiveIdle = 0;
+      if (currentPollMs !== pollMs) {
+        currentPollMs = pollMs;
+        restartInterval(currentPollMs);
+      }
+    }
+  }
 
   async function tick(): Promise<void> {
     if (stats.snapshot().paused) return;
     stats.decayErrors();
     stats.recordPoll();
     try {
-      const windows = await actions.observe();
+      // Single batched CDP call: one listTargets() → observe + conditional dismiss
+      const { windows, dismissed } = await actions.batchTick();
+
       stats.recordObserve(
         windows.map((w) => ({
           windowTitle: w.windowTitle,
@@ -55,7 +85,6 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
         { busy: windows.filter((w) => w.busy).length, slow: windows.filter((w) => w.slowCount > 0).length }
       );
 
-      const dismissed = await actions.dismissModals();
       for (const d of dismissed) {
         if (d.open) stats.recordDismiss(d.kind, { action: d.action, btn: d.btn, window: d.windowTitle });
       }
@@ -79,17 +108,19 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
 
       const drain = await actions.drainQueue();
       stats.recordDrain(drain.sent);
+
+      // Adaptive: idle when no busy windows, no dismissed modals, no drain
+      const isIdle = windows.every((w) => !w.busy && !w.reconnecting) &&
+        dismissed.filter((d) => d.open).length === 0 &&
+        drain.sent === 0;
+      setAdaptiveInterval(isIdle);
     } catch (e) {
       stats.recordError(e instanceof Error ? e.message : String(e));
+      setAdaptiveInterval(false);
     }
   }
 
-  function startInterval(): void {
-    if (timer) clearIv(timer);
-    timer = setIv(() => void tick(), pollMs);
-  }
-
-  startInterval();
+  restartInterval(currentPollMs);
 
   return {
     tick,
