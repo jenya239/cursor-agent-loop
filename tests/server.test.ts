@@ -1,3 +1,6 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import request from 'supertest';
 import Database from 'better-sqlite3';
 import { CursorDbReader } from '../src/db/reader';
@@ -218,5 +221,35 @@ describe('HTTP API', () => {
     expect(r.status).toBe(200);
     expect(r.body).toHaveProperty('agent');
     expect(r.body).toHaveProperty('blockers');
+  });
+
+  it('GET /api/billing returns cost_entries', async () => {
+    const billingDb = path.join(os.tmpdir(), `cr-billing-api-${process.pid}.db`);
+    const previous = process.env.CR_DATABASE_PATH;
+    process.env.CR_DATABASE_PATH = billingDb;
+    try {
+      const { recordCostEntry } = await import('../src/db/cost-entries');
+      recordCostEntry({
+        agentToken: TOKEN,
+        composerId: COMPOSER_ID,
+        contextPercent: 33,
+        model: 'Fast',
+      });
+      const app = createApp(store, noCdp);
+      const response = await request(app).get('/api/billing?limit=5');
+      expect(response.status).toBe(200);
+      expect(response.body.entries).toHaveLength(1);
+      expect(response.body.entries[0].context_percent).toBe(33);
+    } finally {
+      if (previous === undefined) delete process.env.CR_DATABASE_PATH;
+      else process.env.CR_DATABASE_PATH = previous;
+      for (const suffix of ['', '-wal', '-shm']) {
+        try {
+          fs.unlinkSync(`${billingDb}${suffix}`);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
   });
 });

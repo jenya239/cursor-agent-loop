@@ -10,6 +10,21 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
+  // src/ui/views/dom.ts
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function shortPath(p) {
+    const parts = p.replace(/\\/g, "/").split("/").filter(Boolean);
+    if (parts.length <= 2) return parts.join("/");
+    return parts.slice(-2).join("/");
+  }
+  var init_dom = __esm({
+    "src/ui/views/dom.ts"() {
+      "use strict";
+    }
+  });
+
   // src/ui/views/render-progress.ts
   var render_progress_exports = {};
   __export(render_progress_exports, {
@@ -23,6 +38,9 @@
     if (m < 60) return `${m}m ago`;
     return `${Math.floor(m / 60)}h ${m % 60}m ago`;
   }
+  function esc2(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
   function fmtMsg(e) {
     const msg = String(e.msg ?? "");
     const parts = [msg];
@@ -32,13 +50,54 @@
     if (e.reason) parts.push(`(${e.reason})`);
     if (e.err) parts.push(`err: ${String(e.err).slice(0, 80)}`);
     if (e.codes) parts.push(String(e.codes));
-    return parts.join(" ");
+    return esc2(parts.join(" "));
   }
   function msgClass(msg) {
     if (/error|fail|blocked|stuck/.test(msg)) return "pr-err";
     if (/sent|recovery/.test(msg)) return "pr-ok";
     if (/skip|cooldown|backoff/.test(msg)) return "pr-dim";
     return "";
+  }
+  function roleCls(role) {
+    if (!role) return "";
+    const r = role.toLowerCase();
+    if (r === "driver") return "pr-role-driver";
+    if (r === "critic") return "pr-role-critic";
+    if (r === "planner") return "pr-role-planner";
+    if (r === "meta") return "pr-role-meta";
+    if (r === "cleaner" || r === "backlog") return "pr-role-util";
+    return "pr-role-util";
+  }
+  function renderSessionTable(turns) {
+    if (!turns.length) return '<p class="pr-dim">\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445 SESSION.md</p>';
+    const rows = turns.map((t) => {
+      const rc = roleCls(t.role);
+      const gate = t.gate.replace(/build_tests\s*/i, "").replace(/;\s*build\.sh OK/i, "").trim();
+      const timeStr = t.date.length > 10 ? t.date.slice(0, 16) : t.date;
+      return `<tr>
+      <td class="pr-td-time">${esc2(timeStr)}</td>
+      <td><span class="pr-role ${rc}">${esc2(t.role || "?")}</span></td>
+      <td class="pr-td-step">${esc2(t.step)}</td>
+      <td class="pr-td-done">${esc2(t.done)}</td>
+      <td class="pr-td-gate">${esc2(gate)}</td>
+    </tr>`;
+    }).join("");
+    return `<table class="pr-table">
+    <thead><tr><th>\u0412\u0440\u0435\u043C\u044F</th><th>\u0420\u043E\u043B\u044C</th><th>\u0428\u0430\u0433</th><th>\u0421\u0434\u0435\u043B\u0430\u043D\u043E</th><th>Gate</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  }
+  function renderCommits(commits) {
+    if (!commits.length) return '<p class="pr-dim">\u043D\u0435\u0442 \u043A\u043E\u043C\u043C\u0438\u0442\u043E\u0432</p>';
+    const rows = commits.map((c) => `<tr>
+    <td class="pr-td-time">${esc2(c.time.slice(5, 16))}</td>
+    <td><code class="pr-hash">${esc2(c.hash)}</code></td>
+    <td class="pr-td-done">${esc2(c.msg)}</td>
+  </tr>`).join("");
+    return `<table class="pr-table">
+    <thead><tr><th>\u0412\u0440\u0435\u043C\u044F</th><th>Hash</th><th>\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
   }
   function renderProgressHtml(report) {
     const loopBadge = report.loopRunning ? '<span class="pr-badge pr-badge-ok">loop running</span>' : '<span class="pr-badge pr-badge-err">loop STOPPED</span>';
@@ -49,30 +108,44 @@
       const phaseCls = /running/.test(st.phase) ? "pr-ok" : /stuck|incomplete/.test(st.phase) ? "pr-err" : "";
       stateHtml = `
       <div class="pr-state">
-        <span class="${phaseCls}"><b>${st.phase}</b></span>
-        ${st.promptKey ? `\uFFFD <b>${st.promptKey}</b>` : ""}
-        ${st.turnVerify ? `\uFFFD verify:${st.turnVerify}` : ""}
-        ${st.issue ? `<span class="pr-err"> ? ${st.issue}</span>` : ""}
+        <span class="${phaseCls}"><b>${esc2(st.phase)}</b></span>
+        ${st.promptKey ? `&rarr; <b>${esc2(st.promptKey)}</b>` : ""}
+        ${st.turnVerify ? `&middot; verify:${esc2(st.turnVerify)}` : ""}
+        ${st.issue ? `<span class="pr-err"> &#9888; ${esc2(st.issue)}</span>` : ""}
       </div>`;
     }
-    const activeTracks = report.tracks.filter((t) => t.inProgress);
+    const primaryTrack = report.tracks.find((t) => t.isPrimary && !t.closed);
+    const queuedTracks = report.tracks.filter((t) => t.inProgress && !t.closed && !t.isPrimary);
     const closedCount = report.tracks.filter((t) => t.closed).length;
     let trackHtml = "";
-    for (const t of activeTracks) {
-      const pct = t.total ? Math.round(t.done / t.total * 100) : 0;
+    if (primaryTrack) {
+      const pct = primaryTrack.total ? Math.round(primaryTrack.done / primaryTrack.total * 100) : 0;
       const bar = `<div class="pr-bar"><div class="pr-bar-fill" style="width:${pct}%"></div></div>`;
-      trackHtml += `<div class="pr-track"><b>${t.file.replace("TRACK_", "").replace(".md", "")}</b> ${bar} ${t.done}/${t.total} steps \uFFFD pending: [${t.pendingSteps.join(",")}]</div>`;
+      trackHtml += `<div class="pr-track pr-track-primary"><b>${esc2(primaryTrack.file.replace("TRACK_", "").replace(".md", ""))}</b> ${bar} ${primaryTrack.done}/${primaryTrack.total} steps &middot; pending: [${primaryTrack.pendingSteps.join(",")}]</div>`;
+    }
+    if (queuedTracks.length) {
+      const names = queuedTracks.map((t) => t.file.replace("TRACK_", "").replace(".md", "")).join(", ");
+      trackHtml += `<p class="pr-dim">queued: ${esc2(names)}</p>`;
     }
     if (!trackHtml) trackHtml = '<p class="pr-dim">no active tracks</p>';
+    const recentClosed = report.tracks.filter((t) => t.closed).sort((a, b) => (b.closedAt ?? "").localeCompare(a.closedAt ?? "")).slice(0, 5);
+    if (recentClosed.length) {
+      const rows = recentClosed.map((t) => {
+        const name = t.file.replace("TRACK_", "").replace(".md", "");
+        const when = t.closedAt ? `<span class="pr-td-time">${esc2(t.closedAt)}</span>` : "";
+        return `<div class="pr-closed-row">${when} <span class="pr-closed-name">${esc2(name)}</span> <span class="pr-dim">${t.done}/${t.total}</span></div>`;
+      }).join("");
+      trackHtml += `<div class="pr-closed-list">${rows}</div>`;
+    }
     trackHtml += `<p class="pr-dim">${closedCount} tracks closed total</p>`;
     const actHtml = report.recentActivity.length ? report.recentActivity.map((e) => {
       const t = String(e.at ?? "").replace("T", " ").replace(/\.\d+Z$/, "");
       const cls = msgClass(String(e.msg ?? ""));
-      return `<div class="pr-log-row ${cls}"><span class="pr-log-time">${t}</span> ${fmtMsg(e)}</div>`;
+      return `<div class="pr-log-row ${cls}"><span class="pr-log-time">${esc2(t)}</span> ${fmtMsg(e)}</div>`;
     }).join("") : '<p class="pr-dim">no recent activity</p>';
     const errHtml = report.errors.length ? report.errors.map((e) => {
       const t = String(e.at ?? "").replace("T", " ").replace(/\.\d+Z$/, "");
-      return `<div class="pr-log-row pr-err"><span class="pr-log-time">${t}</span> ${fmtMsg(e)}</div>`;
+      return `<div class="pr-log-row pr-err"><span class="pr-log-time">${esc2(t)}</span> ${fmtMsg(e)}</div>`;
     }).join("") : '<p class="pr-dim pr-ok-text">no errors in last 2h</p>';
     return `
 <div class="pr-wrap">
@@ -87,7 +160,13 @@
   <h3 class="pr-section">Active track</h3>
   ${trackHtml}
 
-  <h3 class="pr-section">Recent activity</h3>
+  <h3 class="pr-section">\u0425\u043E\u0434\u044B \u0430\u0433\u0435\u043D\u0442\u0430</h3>
+  ${renderSessionTable(report.sessionTurns)}
+
+  <h3 class="pr-section">\u041A\u043E\u043C\u043C\u0438\u0442\u044B</h3>
+  ${renderCommits(report.recentCommits)}
+
+  <h3 class="pr-section">Recent activity (log)</h3>
   <div class="pr-log">${actHtml}</div>
 
   <h3 class="pr-section">Errors (2h)</h3>
@@ -97,6 +176,73 @@
   var init_render_progress = __esm({
     "src/ui/views/render-progress.ts"() {
       "use strict";
+    }
+  });
+
+  // src/ui/views/render-billing.ts
+  function renderBillingHtml(data, error) {
+    if (error) {
+      return `<p class="billing-error">${esc(error)}</p>`;
+    }
+    if (!data?.entries.length) {
+      return '<p class="hint">\u041D\u0435\u0442 \u0437\u0430\u043F\u0438\u0441\u0435\u0439 cost_entries \u2014 \u043F\u043E\u044F\u0432\u044F\u0442\u0441\u044F \u043F\u043E\u0441\u043B\u0435 cursor_enqueue_send.</p>';
+    }
+    const rows = data.entries.map(
+      (entry) => `<tr>
+        <td>${esc(entry.created_at)}</td>
+        <td>${esc(entry.event_type)}</td>
+        <td>${entry.context_percent != null ? `${entry.context_percent}%` : "\u2014"}</td>
+        <td>${esc(entry.model ?? "\u2014")}</td>
+        <td>${esc(shortToken(entry.agent_token))}</td>
+        <td>${esc(shortComposer(entry.composer_id))}</td>
+      </tr>`
+    ).join("");
+    return `<table class="billing-table">
+    <thead><tr>
+      <th>time</th><th>event</th><th>context</th><th>model</th><th>token</th><th>composer</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  }
+  function shortToken(token) {
+    if (!token) return "\u2014";
+    return token.length > 16 ? `${token.slice(0, 14)}\u2026` : token;
+  }
+  function shortComposer(composerId) {
+    if (!composerId) return "\u2014";
+    return composerId.length > 12 ? `${composerId.slice(0, 8)}\u2026` : composerId;
+  }
+  var init_render_billing = __esm({
+    "src/ui/views/render-billing.ts"() {
+      "use strict";
+      init_dom();
+    }
+  });
+
+  // src/ui/billing-tab.ts
+  var billing_tab_exports = {};
+  __export(billing_tab_exports, {
+    loadBillingPanelHtml: () => loadBillingPanelHtml
+  });
+  async function loadBillingPanelHtml(fetchFn = fetch) {
+    try {
+      const response = await fetchFn("/api/billing");
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        return renderBillingHtml(null, body.error || response.statusText);
+      }
+      return renderBillingHtml(await response.json());
+    } catch (error) {
+      return renderBillingHtml(
+        null,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+  var init_billing_tab = __esm({
+    "src/ui/billing-tab.ts"() {
+      "use strict";
+      init_render_billing();
     }
   });
 
@@ -507,17 +653,11 @@
     }
   };
 
-  // src/ui/views/dom.ts
-  function esc(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-  function shortPath(p) {
-    const parts = p.replace(/\\/g, "/").split("/").filter(Boolean);
-    if (parts.length <= 2) return parts.join("/");
-    return parts.slice(-2).join("/");
-  }
+  // src/ui/app.ts
+  init_dom();
 
   // src/ui/views/render-chat.ts
+  init_dom();
   function tag(m) {
     if (m.role === "user") return "u";
     return (m.text || "").startsWith("[") ? "t" : "a";
@@ -533,6 +673,7 @@
   }
 
   // src/ui/views/render-list.ts
+  init_dom();
   function renderListHtml(chats, activeId) {
     if (!chats.length) return '<p class="hint">\u0427\u0430\u0442\u043E\u0432 \u043D\u0435\u0442</p>';
     const groups = /* @__PURE__ */ new Map();
@@ -558,6 +699,7 @@
   }
 
   // src/ui/views/render-agent-panel.ts
+  init_dom();
   function renderAgentPanelHtml(m) {
     const mismatch = m.mismatch ? ' \xB7 <span class="mismatch">\u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0447\u0430\u0442 \u2260 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439 composer</span>' : "";
     const fallback = m.mismatch && m.composerId ? `<div class="switch-fallback">\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0447\u0430\u0442 \u0432 Cursor \u0432\u0440\u0443\u0447\u043D\u0443\u044E \xB7 <button type="button" class="copy-composer-id">\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C id</button></div>` : "";
@@ -565,9 +707,13 @@
     const main = `\u0430\u0433\u0435\u043D\u0442 \xB7 ${esc(m.label)} \xB7 ${esc(m.cdpLine)} \xB7 ${esc(m.dbLine)}${esc(m.windowLine)}${esc(m.cdpMeta)}${esc(m.switchLine)}${mismatch}`;
     return main + fallback + details;
   }
+  var _lastAgentHtml = "";
   function applyAgentPanel(el, m) {
     el.dataset.phase = m.phase;
-    el.innerHTML = renderAgentPanelHtml(m);
+    const html = renderAgentPanelHtml(m);
+    if (html === _lastAgentHtml) return;
+    _lastAgentHtml = html;
+    el.innerHTML = html;
     const btn = el.querySelector(".copy-composer-id");
     if (btn && m.composerId) {
       btn.addEventListener("click", () => {
@@ -577,6 +723,7 @@
   }
 
   // src/ui/views/render-layout-tree.ts
+  init_dom();
   function renderNodeHeadHtml(node) {
     const kind = `<span class="lk">${esc(node.kind)}</span>`;
     const state = node.state ? ` <span class="ls">${esc(node.state)}</span>` : "";
@@ -625,6 +772,7 @@
   }
 
   // src/ui/views/patch-layout-tree.ts
+  init_dom();
   function qid(id) {
     return id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   }
@@ -738,6 +886,7 @@
   }
 
   // src/ui/views/render-watchdog.ts
+  init_dom();
   function phaseClass(phase) {
     if (/stuck|incomplete|blocked/.test(phase)) return "wd-bad";
     if (/done|idle/.test(phase)) return "wd-ok";
@@ -820,7 +969,8 @@
       layoutHidden: tab !== "chats",
       watchdogHidden: tab !== "watchdog",
       layoutPanelHidden: tab !== "layout",
-      progressHidden: tab !== "progress"
+      progressHidden: tab !== "progress",
+      billingHidden: tab !== "billing"
     };
   }
 
@@ -849,16 +999,20 @@
     const tabWatchdog = document.getElementById("tab-watchdog");
     const tabLayout = document.getElementById("tab-layout");
     const tabProgress = document.getElementById("tab-progress");
+    const tabBilling = document.getElementById("tab-billing");
     const watchdogPanel = document.getElementById("watchdog-panel");
     const watchdogBody = document.getElementById("watchdog-body");
     const cursorLayoutPanel = document.getElementById("cursor-layout-panel");
     const cursorLayoutBody = document.getElementById("cursor-layout-body");
     const progressPanel = document.getElementById("progress-panel");
     const progressBody = document.getElementById("progress-body");
+    const billingPanel = document.getElementById("billing-panel");
+    const billingBody = document.getElementById("billing-body");
     let uiTab = "chats";
     let watchdogTimer = null;
     let layoutTimer = null;
     let progressTimer = null;
+    let billingTimer = null;
     let layoutFetch = null;
     let lastSendAt = 0;
     let lastSendText = "";
@@ -872,20 +1026,29 @@
       } catch {
       }
     }
+    async function refreshBilling() {
+      try {
+        const { loadBillingPanelHtml: loadBillingPanelHtml2 } = await Promise.resolve().then(() => (init_billing_tab(), billing_tab_exports));
+        billingBody.innerHTML = await loadBillingPanelHtml2();
+      } catch {
+      }
+    }
     function setUiTab(tab) {
       uiTab = tab;
       tabChats.classList.toggle("active", tab === "chats");
       tabWatchdog.classList.toggle("active", tab === "watchdog");
       tabLayout.classList.toggle("active", tab === "layout");
       tabProgress.classList.toggle("active", tab === "progress");
+      tabBilling.classList.toggle("active", tab === "billing");
       const vis = tabVisibility(tab);
       layoutEl.hidden = vis.layoutHidden;
       watchdogPanel.hidden = vis.watchdogHidden;
       cursorLayoutPanel.hidden = vis.layoutPanelHidden;
       progressPanel.hidden = vis.progressHidden;
+      billingPanel.hidden = vis.billingHidden;
       if (tab === "watchdog") {
         void refreshWatchdog();
-        if (!watchdogTimer) watchdogTimer = setInterval(() => void refreshWatchdog(), 4e3);
+        if (!watchdogTimer) watchdogTimer = setInterval(() => void refreshWatchdog(), 15e3);
       } else if (watchdogTimer) {
         clearInterval(watchdogTimer);
         watchdogTimer = null;
@@ -899,10 +1062,17 @@
       }
       if (tab === "progress") {
         void refreshProgress();
-        if (!progressTimer) progressTimer = setInterval(() => void refreshProgress(), 5e3);
+        if (!progressTimer) progressTimer = setInterval(() => void refreshProgress(), 3e4);
       } else if (progressTimer) {
         clearInterval(progressTimer);
         progressTimer = null;
+      }
+      if (tab === "billing") {
+        void refreshBilling();
+        if (!billingTimer) billingTimer = setInterval(() => void refreshBilling(), 3e4);
+      } else if (billingTimer) {
+        clearInterval(billingTimer);
+        billingTimer = null;
       }
     }
     async function refreshLayout() {
@@ -935,6 +1105,7 @@
     tabWatchdog.addEventListener("click", () => setUiTab("watchdog"));
     tabLayout.addEventListener("click", () => setUiTab("layout"));
     tabProgress.addEventListener("click", () => setUiTab("progress"));
+    tabBilling.addEventListener("click", () => setUiTab("billing"));
     function saveLastChat(id) {
       try {
         localStorage.setItem(LS_LAST_CHAT, id);
@@ -970,6 +1141,8 @@
       });
       setTimeout(go, 50);
     }
+    let lastListHtml = "";
+    let lastCdpWindowHtml = "";
     function render(s) {
       const panel = agentPanelModel(s);
       applyAgentPanel(agentPanelEl, panel);
@@ -979,17 +1152,25 @@
       statusEl.textContent = s.status;
       statusEl.classList.toggle("loading", s.statusLoading);
       const filtered = filterChats(s.chats, s.wsFilter);
-      listEl.innerHTML = renderListHtml(filtered, s.activeComposerId);
-      listEl.querySelectorAll(".item").forEach((el) => {
-        el.addEventListener("click", (e) => {
-          e.preventDefault();
-          void openChat(el.dataset.id);
+      const newListHtml = renderListHtml(filtered, s.activeComposerId);
+      if (newListHtml !== lastListHtml) {
+        lastListHtml = newListHtml;
+        listEl.innerHTML = newListHtml;
+        listEl.querySelectorAll(".item").forEach((el) => {
+          el.addEventListener("click", (e) => {
+            e.preventDefault();
+            void openChat(el.dataset.id);
+          });
         });
-      });
+      }
       if (cdpWindowEl && s.snapshot) {
         const cur = s.cdpWindowTitle;
         const opts = cdpWindowOptions(s);
-        cdpWindowEl.innerHTML = '<option value="">\u043E\u043A\u043D\u043E CDP (\u0430\u0432\u0442\u043E)</option>' + opts.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
+        const newCdpHtml = '<option value="">\u043E\u043A\u043D\u043E CDP (\u0430\u0432\u0442\u043E)</option>' + opts.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
+        if (newCdpHtml !== lastCdpWindowHtml) {
+          lastCdpWindowHtml = newCdpHtml;
+          cdpWindowEl.innerHTML = newCdpHtml;
+        }
         if (cur && [...cdpWindowEl.options].some((o) => o.value === cur)) {
           cdpWindowEl.value = cur;
         }

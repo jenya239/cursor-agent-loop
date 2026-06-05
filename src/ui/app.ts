@@ -47,17 +47,21 @@ export function boot(): void {
   const tabWatchdog = document.getElementById('tab-watchdog') as HTMLButtonElement;
   const tabLayout = document.getElementById('tab-layout') as HTMLButtonElement;
   const tabProgress = document.getElementById('tab-progress') as HTMLButtonElement;
+  const tabBilling = document.getElementById('tab-billing') as HTMLButtonElement;
   const watchdogPanel = document.getElementById('watchdog-panel')!;
   const watchdogBody = document.getElementById('watchdog-body')!;
   const cursorLayoutPanel = document.getElementById('cursor-layout-panel')!;
   const cursorLayoutBody = document.getElementById('cursor-layout-body')!;
   const progressPanel = document.getElementById('progress-panel')!;
   const progressBody = document.getElementById('progress-body')!;
+  const billingPanel = document.getElementById('billing-panel')!;
+  const billingBody = document.getElementById('billing-body')!;
 
   let uiTab: UiTab = 'chats';
   let watchdogTimer: ReturnType<typeof setInterval> | null = null;
   let layoutTimer: ReturnType<typeof setInterval> | null = null;
   let progressTimer: ReturnType<typeof setInterval> | null = null;
+  let billingTimer: ReturnType<typeof setInterval> | null = null;
   let layoutFetch: Promise<void> | null = null;
 
   let lastSendAt = 0;
@@ -73,20 +77,29 @@ export function boot(): void {
     } catch { /* ignore */ }
   }
 
+  async function refreshBilling() {
+    try {
+      const { loadBillingPanelHtml } = await import('./billing-tab');
+      billingBody.innerHTML = await loadBillingPanelHtml();
+    } catch { /* ignore */ }
+  }
+
   function setUiTab(tab: UiTab) {
     uiTab = tab;
     tabChats.classList.toggle('active', tab === 'chats');
     tabWatchdog.classList.toggle('active', tab === 'watchdog');
     tabLayout.classList.toggle('active', tab === 'layout');
     tabProgress.classList.toggle('active', tab === 'progress');
+    tabBilling.classList.toggle('active', tab === 'billing');
     const vis = tabVisibility(tab);
     layoutEl.hidden = vis.layoutHidden;
     watchdogPanel.hidden = vis.watchdogHidden;
     cursorLayoutPanel.hidden = vis.layoutPanelHidden;
     progressPanel.hidden = vis.progressHidden;
+    billingPanel.hidden = vis.billingHidden;
     if (tab === 'watchdog') {
       void refreshWatchdog();
-      if (!watchdogTimer) watchdogTimer = setInterval(() => void refreshWatchdog(), 4000);
+      if (!watchdogTimer) watchdogTimer = setInterval(() => void refreshWatchdog(), 15000);
     } else if (watchdogTimer) {
       clearInterval(watchdogTimer);
       watchdogTimer = null;
@@ -100,10 +113,17 @@ export function boot(): void {
     }
     if (tab === 'progress') {
       void refreshProgress();
-      if (!progressTimer) progressTimer = setInterval(() => void refreshProgress(), 5000);
+      if (!progressTimer) progressTimer = setInterval(() => void refreshProgress(), 30000);
     } else if (progressTimer) {
       clearInterval(progressTimer);
       progressTimer = null;
+    }
+    if (tab === 'billing') {
+      void refreshBilling();
+      if (!billingTimer) billingTimer = setInterval(() => void refreshBilling(), 30000);
+    } else if (billingTimer) {
+      clearInterval(billingTimer);
+      billingTimer = null;
     }
   }
 
@@ -139,6 +159,7 @@ export function boot(): void {
   tabWatchdog.addEventListener('click', () => setUiTab('watchdog'));
   tabLayout.addEventListener('click', () => setUiTab('layout'));
   tabProgress.addEventListener('click', () => setUiTab('progress'));
+  tabBilling.addEventListener('click', () => setUiTab('billing'));
 
   function saveLastChat(id: string) {
     try {
@@ -181,6 +202,9 @@ export function boot(): void {
     setTimeout(go, 50);
   }
 
+  let lastListHtml = '';
+  let lastCdpWindowHtml = '';
+
   function render(s: ReturnType<CrStore['get']>) {
     const panel = agentPanelModel(s);
     applyAgentPanel(agentPanelEl, panel);
@@ -192,20 +216,28 @@ export function boot(): void {
     statusEl.classList.toggle('loading', s.statusLoading);
 
     const filtered = filterChats(s.chats, s.wsFilter);
-    listEl.innerHTML = renderListHtml(filtered, s.activeComposerId);
-    listEl.querySelectorAll('.item').forEach((el) => {
-      el.addEventListener('click', (e) => {
-        e.preventDefault();
-        void openChat((el as HTMLElement).dataset.id!);
+    const newListHtml = renderListHtml(filtered, s.activeComposerId);
+    if (newListHtml !== lastListHtml) {
+      lastListHtml = newListHtml;
+      listEl.innerHTML = newListHtml;
+      listEl.querySelectorAll('.item').forEach((el) => {
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          void openChat((el as HTMLElement).dataset.id!);
+        });
       });
-    });
+    }
 
     if (cdpWindowEl && s.snapshot) {
       const cur = s.cdpWindowTitle;
       const opts = cdpWindowOptions(s);
-      cdpWindowEl.innerHTML =
+      const newCdpHtml =
         '<option value="">окно CDP (авто)</option>' +
         opts.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+      if (newCdpHtml !== lastCdpWindowHtml) {
+        lastCdpWindowHtml = newCdpHtml;
+        cdpWindowEl.innerHTML = newCdpHtml;
+      }
       if (cur && [...cdpWindowEl.options].some((o) => o.value === cur)) {
         cdpWindowEl.value = cur;
       }

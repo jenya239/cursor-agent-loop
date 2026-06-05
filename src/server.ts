@@ -16,6 +16,7 @@ import { maxUsagePct, probeWindowUsage } from './cursor/probe-usage';
 import { getAgentState, refreshAgentStates } from './cursor/agent-state';
 import { resolveTargets } from './cursor/agent-targets';
 import type { ChatLine } from './cursor/loop-guard';
+import { listCostEntries } from './db/cost-entries';
 import { buildProgressReport } from './progress/report';
 import { captureSnapshot } from './cursor/interaction/snapshot';
 import { runStep, waitFor, stepRequestToOpts, waitRequestToOpts } from './cursor/interaction';
@@ -412,6 +413,16 @@ export function createApp(
       res.json(buildProgressReport());
     } catch (e) {
       res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.get('/api/billing', (req, res) => {
+    try {
+      const parsed = Number.parseInt(String(req.query.limit ?? '100'), 10);
+      const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 100;
+      res.json({ entries: listCostEntries({ limit }) });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
   });
 

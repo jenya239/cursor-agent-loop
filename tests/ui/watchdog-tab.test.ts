@@ -7,6 +7,8 @@ describe('tabVisibility', () => {
       layoutHidden: false,
       watchdogHidden: true,
       layoutPanelHidden: true,
+      progressHidden: true,
+      billingHidden: true,
     });
   });
 
@@ -15,6 +17,8 @@ describe('tabVisibility', () => {
       layoutHidden: true,
       watchdogHidden: false,
       layoutPanelHidden: true,
+      progressHidden: true,
+      billingHidden: true,
     });
   });
 });

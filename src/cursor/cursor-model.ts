@@ -21,6 +21,7 @@ import { generateAgentToken, registerTokenPayload } from './agent-token';
 import { resolveAgentToken as resolveAgentTokenDb } from './resolve-agent-token';
 import { resolveSendTarget } from './resolve-target';
 import { isManagedComposer } from './agent-targets';
+import { recordEnqueueCost } from '../billing/enqueue-cost';
 import { checkEnqueueLoop, recordEnqueue } from './loop-guard';
 import type { CursorSession, ModalState } from './session';
 import type {
@@ -60,6 +61,10 @@ export class CursorModel {
   private hintsFor(composerId: string): string[] | undefined {
     const summary = this.store.getChats().chats.find((c) => c.composerId === composerId);
     return workspaceHintsFromChat(summary);
+  }
+
+  private noteEnqueueBilling(composerId: string, agentToken: string): void {
+    void recordEnqueueCost(this.cdp, { agentToken, composerId });
   }
 
   private modalState(): ModalState {
@@ -343,6 +348,7 @@ export class CursorModel {
         windowTitle,
       });
       recordEnqueue(target.composerId, payload);
+      this.noteEnqueueBilling(target.composerId, opts.token);
       return {
         ...item,
         position: this.sendQueue.length,
@@ -357,6 +363,7 @@ export class CursorModel {
       windowTitle,
     });
     recordEnqueue(target.composerId, payload);
+    this.noteEnqueueBilling(target.composerId, opts.token);
     return {
       ...item,
       position: this.sendQueue.length,
