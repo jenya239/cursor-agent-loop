@@ -5,6 +5,7 @@ import { execSync } from 'child_process';
 import { listTracks, primaryTrackFile } from '../cursor/agent_next';
 import { getAgentState, type AgentStateEntry } from '../cursor/agent-state';
 import { AGENT_TARGETS } from '../cursor/agent-targets';
+import { listMeetings } from '../meetings/sync';
 import { loadCachedSessionTurns } from '../session/sync';
 
 const LOG_PATH = process.env.CR_OVERNIGHT_LOG ?? path.join(os.homedir(), '.cursor/cr-overnight.log');
@@ -47,6 +48,14 @@ export interface GitCommit {
   msg: string;
 }
 
+export interface MeetingSummary {
+  slug: string;
+  topic: string;
+  path: string;
+  startedAt: string;
+  endedAt: string | null;
+}
+
 export interface ProgressReport {
   loopRunning: boolean;
   lastTickAt: string | null;
@@ -56,6 +65,7 @@ export interface ProgressReport {
   errors: LogEntry[];
   tracks: TrackProgress[];
   sessionTurns: SessionTurn[];
+  meetings: MeetingSummary[];
   recentCommits: GitCommit[];
 }
 
@@ -135,6 +145,7 @@ export function buildProgressReport(): ProgressReport {
   let agentState: AgentStateEntry | null = null;
   let tracks: TrackProgress[] = [];
   let sessionTurns: SessionTurn[] = [];
+  let meetings: MeetingSummary[] = [];
   let recentCommits: GitCommit[] = [];
 
   if (primary) {
@@ -159,9 +170,21 @@ export function buildProgressReport(): ProgressReport {
       tracks = [];
     }
     sessionTurns = loadCachedSessionTurns(primary.agentDir);
+    meetings = listMeetings(path.join(primary.agentDir, 'meetings'));
     const repoDir = path.join(primary.agentDir, '../..');
     recentCommits = readRecentCommits(repoDir);
   }
 
-  return { loopRunning, lastTickAt, lastTickAgoMs, agentState, recentActivity, errors, tracks, sessionTurns, recentCommits };
+  return {
+    loopRunning,
+    lastTickAt,
+    lastTickAgoMs,
+    agentState,
+    recentActivity,
+    errors,
+    tracks,
+    sessionTurns,
+    meetings,
+    recentCommits,
+  };
 }

@@ -19,6 +19,7 @@ import type { ChatLine } from './cursor/loop-guard';
 import { listCostEntries } from './db/cost-entries';
 import { buildProgressReport } from './progress/report';
 import { AGENT_TARGETS } from './cursor/agent-targets';
+import { startMeetingsWatcher } from './meetings/sync';
 import { startSessionTurnsWatcher } from './session/sync';
 import { captureSnapshot } from './cursor/interaction/snapshot';
 import { runStep, waitFor, stepRequestToOpts, waitRequestToOpts } from './cursor/interaction';
@@ -452,6 +453,9 @@ function main(): void {
     const sessionWatcher = primaryAgent
       ? startSessionTurnsWatcher(primaryAgent.agentDir)
       : undefined;
+    const meetingsWatcher = primaryAgent
+      ? startMeetingsWatcher(path.join(primaryAgent.agentDir, 'meetings'))
+      : undefined;
 
     const server = app.listen(port, () => {
       console.log(`http://127.0.0.1:${port}  db=${dbPath}`);
@@ -460,6 +464,7 @@ function main(): void {
 
     const shutdown = () => {
       sessionWatcher?.stop();
+      meetingsWatcher?.stop();
       watchdogSvc?.close();
       server.close();
       reader.close();

@@ -87,6 +87,22 @@
     <tbody>${rows}</tbody>
   </table>`;
   }
+  function renderMeetingsTable(meetings) {
+    if (!meetings.length) return '<p class="pr-dim">\u043D\u0435\u0442 meeting rooms</p>';
+    const rows = meetings.map((meeting) => {
+      const status = meeting.endedAt ? esc2(meeting.endedAt) : '<span class="pr-ok">open</span>';
+      return `<tr>
+      <td class="pr-td-time">${esc2(meeting.startedAt)}</td>
+      <td class="pr-td-done">${esc2(meeting.topic)}</td>
+      <td><code class="pr-hash">${esc2(meeting.slug)}</code></td>
+      <td class="pr-td-gate">${status}</td>
+    </tr>`;
+    }).join("");
+    return `<table class="pr-table">
+    <thead><tr><th>\u0414\u0430\u0442\u0430</th><th>\u0422\u0435\u043C\u0430</th><th>Slug</th><th>\u0421\u0442\u0430\u0442\u0443\u0441</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  }
   function renderCommits(commits) {
     if (!commits.length) return '<p class="pr-dim">\u043D\u0435\u0442 \u043A\u043E\u043C\u043C\u0438\u0442\u043E\u0432</p>';
     const rows = commits.map((c) => `<tr>
@@ -162,6 +178,9 @@
 
   <h3 class="pr-section">\u0425\u043E\u0434\u044B \u0430\u0433\u0435\u043D\u0442\u0430</h3>
   ${renderSessionTable(report.sessionTurns)}
+
+  <h3 class="pr-section">Meeting rooms</h3>
+  ${renderMeetingsTable(report.meetings)}
 
   <h3 class="pr-section">\u041A\u043E\u043C\u043C\u0438\u0442\u044B</h3>
   ${renderCommits(report.recentCommits)}
