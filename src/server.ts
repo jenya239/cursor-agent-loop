@@ -18,6 +18,8 @@ import { resolveTargets } from './cursor/agent-targets';
 import type { ChatLine } from './cursor/loop-guard';
 import { listCostEntries } from './db/cost-entries';
 import { buildProgressReport } from './progress/report';
+import { AGENT_TARGETS } from './cursor/agent-targets';
+import { startSessionTurnsWatcher } from './session/sync';
 import { captureSnapshot } from './cursor/interaction/snapshot';
 import { runStep, waitFor, stepRequestToOpts, waitRequestToOpts } from './cursor/interaction';
 import type { StepRequest, WaitRequest } from './cursor/interaction/registry';
@@ -446,6 +448,10 @@ function main(): void {
 
     const app = createApp(store, { watchdogStats: watchdogSvc?.stats ?? null });
     const port = Number(process.env.PORT) || 3847;
+    const primaryAgent = AGENT_TARGETS.find((target) => target.id === 'mlc') ?? AGENT_TARGETS[0];
+    const sessionWatcher = primaryAgent
+      ? startSessionTurnsWatcher(primaryAgent.agentDir)
+      : undefined;
 
     const server = app.listen(port, () => {
       console.log(`http://127.0.0.1:${port}  db=${dbPath}`);
@@ -453,6 +459,7 @@ function main(): void {
     });
 
     const shutdown = () => {
+      sessionWatcher?.stop();
       watchdogSvc?.close();
       server.close();
       reader.close();

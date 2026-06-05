@@ -1,16 +1,20 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { listTracks } from '../cursor/agent_next';
+import { execSync } from 'child_process';
+import { listTracks, primaryTrackFile } from '../cursor/agent_next';
 import { getAgentState, type AgentStateEntry } from '../cursor/agent-state';
 import { AGENT_TARGETS } from '../cursor/agent-targets';
+import { loadCachedSessionTurns } from '../session/sync';
 
 const LOG_PATH = process.env.CR_OVERNIGHT_LOG ?? path.join(os.homedir(), '.cursor/cr-overnight.log');
 
 export interface TrackProgress {
   file: string;
   closed: boolean;
+  closedAt?: string;
   inProgress: boolean;
+  isPrimary: boolean;
   done: number;
   total: number;
   pendingSteps: number[];
@@ -28,6 +32,21 @@ export interface LogEntry {
   [k: string]: unknown;
 }
 
+export interface SessionTurn {
+  date: string;
+  title: string;
+  role: string;
+  step: string;
+  done: string;
+  gate: string;
+}
+
+export interface GitCommit {
+  hash: string;
+  time: string;
+  msg: string;
+}
+
 export interface ProgressReport {
   loopRunning: boolean;
   lastTickAt: string | null;
@@ -36,6 +55,8 @@ export interface ProgressReport {
   recentActivity: LogEntry[];
   errors: LogEntry[];
   tracks: TrackProgress[];
+  sessionTurns: SessionTurn[];
+  recentCommits: GitCommit[];
 }
 
 function isLockHeld(): boolean {
@@ -54,6 +75,26 @@ function readLastLogLines(n = 80): LogEntry[] {
     const lines = text.trimEnd().split('\n').slice(-n);
     return lines.flatMap((l) => {
       try { return [JSON.parse(l) as LogEntry]; } catch { return []; }
+    });
+  } catch {
+    return [];
+  }
+}
+
+function readRecentCommits(repoDir: string, n = 15): GitCommit[] {
+  try {
+    const out = execSync(
+      `git -C "${repoDir}" log -${n} --format="%h|%ai|%s"`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }
+    );
+    return out.trim().split('\n').filter(Boolean).map((line) => {
+      const idx1 = line.indexOf('|');
+      const idx2 = line.indexOf('|', idx1 + 1);
+      return {
+        hash: line.slice(0, idx1).trim(),
+        time: line.slice(idx1 + 1, idx2).trim().replace('T', ' ').replace(/\.\d+[+-]\d{2}:\d{2}$/, '').replace(/ \+\d{4}$/, ''),
+        msg: line.slice(idx2 + 1).trim(),
+      };
     });
   } catch {
     return [];
@@ -93,17 +134,22 @@ export function buildProgressReport(): ProgressReport {
 
   let agentState: AgentStateEntry | null = null;
   let tracks: TrackProgress[] = [];
+  let sessionTurns: SessionTurn[] = [];
+  let recentCommits: GitCommit[] = [];
 
   if (primary) {
     agentState = getAgentState(primary.id).agents[0] ?? null;
     try {
       const raw = listTracks(primary.agentDir);
+      const primaryFile = primaryTrackFile(raw, false);
       tracks = raw.map((t) => {
         const { done, total } = countSteps(primary.agentDir, t.file);
         return {
           file: t.file,
           closed: t.closed,
+          closedAt: t.closedAt,
           inProgress: t.inProgress,
+          isPrimary: t.file === primaryFile,
           done,
           total,
           pendingSteps: t.pendingSteps,
@@ -112,7 +158,10 @@ export function buildProgressReport(): ProgressReport {
     } catch {
       tracks = [];
     }
+    sessionTurns = loadCachedSessionTurns(primary.agentDir);
+    const repoDir = path.join(primary.agentDir, '../..');
+    recentCommits = readRecentCommits(repoDir);
   }
 
-  return { loopRunning, lastTickAt, lastTickAgoMs, agentState, recentActivity, errors, tracks };
+  return { loopRunning, lastTickAt, lastTickAgoMs, agentState, recentActivity, errors, tracks, sessionTurns, recentCommits };
 }
