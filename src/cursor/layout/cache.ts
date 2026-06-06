@@ -3,7 +3,7 @@ import { isFixtureCdp } from '../../cdp/fixture-cdp';
 import { observeCursorLayout } from './observe';
 import type { CursorLayoutSnapshot } from './types';
 
-const TTL_MS = 8000;
+const TTL_MS = 20000;
 
 let cache: { at: number; data: CursorLayoutSnapshot } | null = null;
 let inflight: Promise<CursorLayoutSnapshot> | null = null;

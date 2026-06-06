@@ -67,6 +67,7 @@ export interface ProgressReport {
   sessionTurns: SessionTurn[];
   meetings: MeetingSummary[];
   recentCommits: GitCommit[];
+  plannedItems: string[];
 }
 
 function isLockHeld(): boolean {
@@ -114,11 +115,32 @@ function readRecentCommits(repoDir: string, n = 15): GitCommit[] {
 function countSteps(agentDir: string, file: string): { done: number; total: number } {
   try {
     const content = fs.readFileSync(path.join(agentDir, file), 'utf8');
-    const rows = [...content.matchAll(/\|\s*\d+\s*\|[^|\n]*\|\s*(done|pending)\s*\|/gi)];
-    const done = rows.filter((m) => /done/i.test(m[1])).length;
+    const rows = [...content.matchAll(/\|\s*\d+\s*\|[^|\n]*\|\s*(done[^|]*|pending|skip)\s*\|/gi)];
+    const done = rows.filter((m) => /^done|^skip/i.test(m[1].trim())).length;
     return { done, total: rows.length };
   } catch {
     return { done: 0, total: 0 };
+  }
+}
+
+function parsePlannedItems(agentDir?: string): string[] {
+  if (!agentDir) return [];
+  try {
+    const planPath = path.join(agentDir, '../..', 'docs', 'PLAN.md');
+    if (!fs.existsSync(planPath)) return [];
+    const content = fs.readFileSync(planPath, 'utf8');
+    // Extract Phase headers and their first descriptive line
+    const items: string[] = [];
+    for (const m of content.matchAll(/^### (Phase \S+[^\n]*)\n([^\n]*)/gm)) {
+      const phase = m[1].trim();
+      const desc = m[2].replace(/^\*\*Цель\*\*:\s*/i, '').trim();
+      if (desc) items.push(`${phase}: ${desc}`);
+      else items.push(phase);
+      if (items.length >= 8) break;
+    }
+    return items;
+  } catch {
+    return [];
   }
 }
 
@@ -175,6 +197,8 @@ export function buildProgressReport(): ProgressReport {
     recentCommits = readRecentCommits(repoDir);
   }
 
+  const plannedItems = parsePlannedItems(primary?.agentDir);
+
   return {
     loopRunning,
     lastTickAt,
@@ -186,5 +210,6 @@ export function buildProgressReport(): ProgressReport {
     sessionTurns,
     meetings,
     recentCommits,
+    plannedItems,
   };
 }

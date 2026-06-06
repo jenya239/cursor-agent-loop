@@ -7,18 +7,19 @@ import { CursorModel } from '../src/cursor/cursor-model';
 import { liveCdp } from '../src/cdp/live-cdp';
 import { CursorDbReader } from '../src/db/reader';
 import { globalDbPath } from '../src/db/paths';
-import { buildNudgePrompt, recordGuardNudge } from '../src/cursor/agent_next';
+import { buildNudgePrompt, recordGuardNudge, pickNextAgentStep } from '../src/cursor/agent_next';
 import { parseAgentPrompt } from '../src/cursor/loop-guard';
 import { buildGuardRecovery, planGuardNudge, isExpectedSendBlock } from '../src/cursor/guard-nudge';
 import { syncAgentState } from '../src/cursor/agent-state';
 import { analyzeSupervisor, guardBlockedAlerts, loadSupervisorReport } from '../src/supervisor/analyze';
 import { resolveTargets, type AgentTarget } from '../src/cursor/agent-targets';
+import { sendKeys, capturePaneOutput } from '../src/tmux/panes';
 import { isExpensiveModel, probeWindowUsage } from './probe-usage';
 const CR_BASE = process.env.CR_BASE || 'http://127.0.0.1:3847';
 const LOG = process.env.CR_OVERNIGHT_LOG || path.join(os.homedir(), '.cursor', 'cr-overnight.log');
 const STATE = path.join(path.dirname(LOG), 'cr-overnight-state.json');
 const COOLDOWN_MS = Number(process.env.CR_OVERNIGHT_COOLDOWN_MS) || 15 * 60_000;
-const USAGE_PAUSE_PCT = Number(process.env.CR_USAGE_PAUSE_PCT) || 88;
+const USAGE_PAUSE_PCT = Number(process.env.CR_USAGE_PAUSE_PCT) || 100;
 const REPO = path.join(__dirname, '..');
 
 type StateFile = Record<string, { lastNudgeAt?: number; token?: string; noWindowUntil?: number }>;
@@ -292,6 +293,65 @@ async function tickTarget(target: AgentTarget, usageWindows: Awaited<ReturnType<
     reader.close();
   }
 }
+/** Detect if a terminal agent pane is idle (showing a prompt, not generating). */
+function isTmuxPaneIdle(paneOutput: string): boolean {
+  const lines = paneOutput.trimEnd().split('\n');
+  // Last non-empty line
+  const last = lines.reverse().find((l) => l.trim()) ?? '';
+  // Claude Code shows "> " or "$ ", opencode shows its own prompt
+  return /[>$#]\s*$/.test(last) || last.trim() === '';
+}
+
+async function tickTmuxTarget(target: AgentTarget) {
+  if (target.transport !== 'tmux' || !target.paneId) return;
+
+  const st = loadState();
+  const entry = st[target.id] ?? {};
+  const since = Date.now() - (entry.lastNudgeAt ?? 0);
+  if (since < COOLDOWN_MS) {
+    log('idle cooldown', { target: target.id, sinceMs: since });
+    return;
+  }
+  if (!fs.existsSync(target.agentDir)) {
+    log('agent dir missing', { target: target.id, dir: target.agentDir });
+    return;
+  }
+
+  let paneOutput: string;
+  try {
+    paneOutput = capturePaneOutput(target.paneId, 50);
+  } catch (e) {
+    log('tmux capture fail', { target: target.id, pane: target.paneId, err: e instanceof Error ? e.message : String(e) });
+    return;
+  }
+
+  if (!isTmuxPaneIdle(paneOutput)) {
+    log('tmux busy', { target: target.id, pane: target.paneId });
+    return;
+  }
+
+  const next = pickNextAgentStep(target.agentDir);
+  const TMUX_TOKEN = 'tmux';
+  const text = buildNudgePrompt(next, TMUX_TOKEN, target.id);
+
+  try {
+    sendKeys(target.paneId, text);
+    recordGuardNudge(path.join(target.agentDir, 'SESSION.md'), {
+      role: next.role as 'Driver' | 'Meta' | 'Planner' | 'Backlog' | 'Critic',
+      step: next.step,
+      trackFile: next.trackFile ?? 'TRACK_PLAN.md',
+      focus: 'stability',
+      reason: 'tmux nudge',
+      refs: [],
+    });
+    st[target.id] = { lastNudgeAt: Date.now() };
+    saveState(st);
+    log('tmux sent', { target: target.id, pane: target.paneId, role: next.role, step: next.step });
+  } catch (e) {
+    log('tmux send fail', { target: target.id, err: e instanceof Error ? e.message : String(e) });
+  }
+}
+
 async function tick() {
   if (!(await health())) {
     log('server down');
@@ -311,7 +371,11 @@ async function tick() {
   if (wd?.errors_total) log('watchdog errors', { total: wd.errors_total });
 
   for (const target of resolveTargets()) {
-    await tickTarget(target, usageWindows);
+    if (target.transport === 'tmux') {
+      await tickTmuxTarget(target);
+    } else {
+      await tickTarget(target, usageWindows);
+    }
   }
 }
 

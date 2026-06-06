@@ -16,9 +16,14 @@ export function renderAgentPanelHtml(m: AgentPanelModel): string {
   return main + fallback + details;
 }
 
+let _lastAgentHtml = '';
+
 export function applyAgentPanel(el: HTMLElement, m: AgentPanelModel): void {
   el.dataset.phase = m.phase;
-  el.innerHTML = renderAgentPanelHtml(m);
+  const html = renderAgentPanelHtml(m);
+  if (html === _lastAgentHtml) return;
+  _lastAgentHtml = html;
+  el.innerHTML = html;
   const btn = el.querySelector('.copy-composer-id');
   if (btn && m.composerId) {
     btn.addEventListener('click', () => {

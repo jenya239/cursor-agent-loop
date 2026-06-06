@@ -22,6 +22,8 @@ export interface DaemonOpts {
   busyMs?: number;
   reconnectMs?: number;
   slowRecover?: boolean;
+  // Auto-stop after this many ms of continuous send failures (default 12 min)
+  sendFailStopMs?: number;
   setIntervalFn?: typeof setInterval;
   clearIntervalFn?: typeof clearInterval;
 }
@@ -35,6 +37,9 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
   const busyMs = opts.busyMs ?? watchdogBusyMs();
   const reconnectMs = opts.reconnectMs ?? watchdogReconnectMs();
   const slowRecover = opts.slowRecover ?? watchdogSlowRecoverEnabled();
+  const sendFailStopMs = opts.sendFailStopMs ?? (Number(process.env.CR_SEND_FAIL_STOP_MS) || 12 * 60_000);
+  // sendFailSince: per-window timestamp of first send-fail in current continuous run
+  const sendFailSince = new Map<string, number>();
   // Adaptive interval: after N consecutive idle ticks, stretch to idlePollMs
   const idlePollMs = opts.idlePollMs ?? (Number(process.env.CR_WATCHDOG_IDLE_POLL_MS) || Math.min(pollMs * 5, 20000));
   const idleAfterTicks = opts.idleAfterTicks ?? 3;
@@ -108,6 +113,27 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
 
       const drain = await actions.drainQueue();
       stats.recordDrain(drain.sent);
+
+      // Auto-stop: window busy + queue non-empty for > sendFailStopMs → force stop
+      for (const w of windows) {
+        const hasPending = drain.remaining > 0;
+        if (w.busy && hasPending) {
+          if (!sendFailSince.has(w.windowTitle)) sendFailSince.set(w.windowTitle, Date.now());
+          const since = sendFailSince.get(w.windowTitle)!;
+          if (Date.now() - since >= sendFailStopMs) {
+            const r = await actions.recoverSlow(w.windowTitle);
+            sendFailSince.delete(w.windowTitle);
+            if (r) {
+              const t = targetForWindowTitle(w.windowTitle);
+              if (t) noteAgentRecover(t.id, 'stop+resubmit');
+              stats.recordSlowRecover(w.windowTitle, { ...r.outcome });
+              tracker.clear(w.windowTitle);
+            }
+          }
+        } else {
+          sendFailSince.delete(w.windowTitle);
+        }
+      }
 
       // Adaptive: idle when no busy windows, no dismissed modals, no drain
       const isIdle = windows.every((w) => !w.busy && !w.reconnecting) &&

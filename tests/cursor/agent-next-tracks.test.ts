@@ -50,4 +50,19 @@ describe('agent-next tracks', () => {
     expect(s.stepLast).toBe('2');
     fs.unlinkSync(sessionPath);
   });
+
+  it('falls back to Researcher when Planner ran but all tracks are closed', () => {
+    const idleFix = path.join(__dirname, '../fixtures/agent-next-idle');
+    const next = pickNextAgentStep(idleFix);
+    expect(next.role).toBe('Researcher');
+  });
+
+  it('parseSession reads last numeric value, not template placeholder', () => {
+    const s = parseSession(path.join(FIX, 'SESSION.md'));
+    // fixture has template "<n; +1 after Driver, 0 after Planner>" as last line —
+    // must return the last real numeric value (3), not NaN
+    expect(s.driverTurnsSincePlan).toBe(3);
+    expect(s.roleLast).toBe('Driver');
+    expect(s.stepLast).toBe('3');
+  });
 });

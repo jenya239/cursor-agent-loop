@@ -66,7 +66,14 @@ export function parseSessionTurnBlocks(content: string, options?: {
   const gitByDate = options?.agentDir ? sessionGitTimesByDate(options.agentDir) : new Map<string, string[]>();
   const logTimes = logTimesByTurn(options?.logPath);
   const dateIndex = new Map<string, number>();
-  const recent = blocks.slice(-(limit * 2)).reverse();
+  // Sort blocks by date descending (newest first) regardless of file position.
+  // SESSION.md may prepend new turns near top while old turns remain at bottom.
+  const sorted = blocks.slice().sort((a, b) => {
+    const da = a.split('\n')[0]?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? '';
+    const db2 = b.split('\n')[0]?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? '';
+    return db2.localeCompare(da);
+  });
+  const recent = sorted.slice(0, limit * 2);
   const turns = recent
     .map((block) => {
       const title = block.split('\n')[0]?.trim() ?? '';

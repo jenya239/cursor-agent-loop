@@ -630,3 +630,7 @@ aside {
 .pr-role-util    { background: #2a2a2a; color: #888; }
 .pr-err { color: var(--red); }
 .pr-dim { color: var(--base1); }
+.pr-upcoming-name { color: var(--base0); }
+.pr-planned { margin: 4px 0; }
+.pr-planned summary { cursor: pointer; }
+.pr-planned-row { font-size: 0.82em; color: var(--base01); padding: 1px 8px; }

@@ -7,11 +7,14 @@ export interface TrackInfo {
   file: string;
   name: string;
   closed: boolean;
+  closedAt?: string;
   inProgress: boolean;
   pendingSteps: number[];
   pendingMeta?: Set<number>;
   nextStep?: number;
   focus: 'stability' | 'security' | 'performance' | 'architecture' | 'tooling';
+  previousFile?: string;
+  hasBlockedSkip?: boolean;
 }
 
 export interface SessionInfo {
@@ -21,7 +24,7 @@ export interface SessionInfo {
   activeTrack?: string;
 }
 
-export type AgentRole = 'Driver' | 'Planner' | 'Backlog' | 'Meta' | 'Critic' | 'Orchestrator' | 'Cleaner';
+export type AgentRole = 'Driver' | 'Planner' | 'Backlog' | 'Meta' | 'Critic' | 'Orchestrator' | 'Cleaner' | 'Blogger' | 'Reviewer' | 'OrchestratorDev' | 'Monitor' | 'Researcher';
 
 export interface NextAgentStep {
   role: AgentRole;
@@ -56,6 +59,19 @@ export function parseTrackFile(filePath: string): TrackInfo | null {
   const content = fs.readFileSync(filePath, 'utf8');
   const name = base;
   const closed = /## Status:\s*\*\*closed\*\*|Status:\s*closed/i.test(content);
+  let closedAt: string | undefined;
+  if (closed) {
+    // prefer explicit date in status line
+    const m = content.match(/## Status:\s*\*\*closed\*\*[^(\n]*\([^)]*?(\d{4}-\d{2}-\d{2})/);
+    if (m) {
+      closedAt = m[1];
+    } else {
+      // fall back to file mtime
+      try {
+        closedAt = fs.statSync(filePath).mtime.toISOString().slice(0, 10);
+      } catch { /* ignore */ }
+    }
+  }
   const inProgress =
     !closed &&
     (/in progress/i.test(content) ||
@@ -71,24 +87,35 @@ export function parseTrackFile(filePath: string): TrackInfo | null {
   pendingSteps.sort((a, b) => a - b);
   const nextMatch = content.match(/\*\*STEP=(\d+)\*\*/);
   const nextStep = nextMatch ? Number(nextMatch[1]) : pendingSteps[0];
+  // extract previous track name (e.g. "[TRACK_TYPE_ALIASES.md](..." → "TRACK_TYPE_ALIASES.md")
+  const prevMatch = content.match(/previous:\s*\[?(TRACK_\w+\.md)\]?/i);
+  const previousFile = prevMatch?.[1] ?? undefined;
+  const hasBlockedSkip = /skip\s*[—–-]\s*blocker:/i.test(content);
   return {
     file: path.basename(filePath),
     name,
     closed,
+    closedAt,
     inProgress,
     pendingSteps,
     pendingMeta,
     nextStep,
     focus: trackFocus(name, content),
+    previousFile,
+    hasBlockedSkip,
   };
 }
 
 export function parseSession(sessionPath: string): SessionInfo {
   const content = fs.readFileSync(sessionPath, 'utf8');
-  const driver = content.match(/driver_turns_since_plan\s*\|\s*([^|\n]+)/)?.[1];
-  const role = content.match(/role_last\s*\|\s*([^|\n]+)/)?.[1];
-  const step = content.match(/step_last\s*\|\s*([^|\n]+)/)?.[1];
-  const track = content.match(/TRACK_\w+\s*\|\s*([^\n|]+)/)?.[1]?.trim();
+  const lastNumericMatch = (re: RegExp) =>
+    [...content.matchAll(re)].map((m) => m[1].trim()).filter((v) => /^\d+$/.test(v)).pop();
+  const lastMatch = (re: RegExp) =>
+    [...content.matchAll(re)].map((m) => m[1].trim()).filter((v) => !v.startsWith('<')).pop();
+  const driver = lastNumericMatch(/driver_turns_since_plan\s*\|\s*([^|\n]+)/g);
+  const role = lastMatch(/role_last\s*\|\s*([^|\n]+)/g);
+  const step = lastMatch(/step_last\s*\|\s*([^|\n]+)/g);
+  const track = lastMatch(/TRACK_\w+\s*\|\s*([^\n|]+)/g);
   return {
     driverTurnsSincePlan: driver ? Number(driver.trim()) : 0,
     roleLast: role?.trim(),
@@ -105,11 +132,15 @@ export function listTracks(agentDir: string): TrackInfo[] {
     .filter(Boolean);
 }
 
-function primaryTrackFile(tracks: TrackInfo[], isCr: boolean): string {
+export function primaryTrackFile(tracks: TrackInfo[], isCr: boolean): string {
+  const closedSet = new Set(tracks.filter((t) => t.closed).map((t) => t.file));
   const sort = (a: TrackInfo, b: TrackInfo) =>
     FOCUS_ORDER.indexOf(a.focus) - FOCUS_ORDER.indexOf(b.focus);
-  const active = tracks.filter((t) => t.inProgress && t.pendingSteps.length > 0).sort(sort);
+  // prefer tracks whose predecessor is closed (or has no predecessor)
+  const ready = (t: TrackInfo) => !t.previousFile || closedSet.has(t.previousFile);
+  const active = tracks.filter((t) => t.inProgress && t.pendingSteps.length > 0 && ready(t)).sort(sort);
   if (active.length) return active[0].file;
+  // fallback: any open track
   const open = tracks.filter((t) => !t.closed && t.pendingSteps.length > 0).sort(sort);
   if (open.length) return open[0].file;
   return isCr ? 'TRACK_ORCH.md' : 'TRACK_PLAN.md';
@@ -137,8 +168,10 @@ export function recordGuardNudge(sessionPath: string, next: NextAgentStep): void
 export function trackStepStatus(trackPath: string, step: string): 'pending' | 'done' | 'unknown' {
   if (!/^\d+$/.test(step) || !fs.existsSync(trackPath)) return 'unknown';
   const content = fs.readFileSync(trackPath, 'utf8');
-  const m = content.match(new RegExp(`\\|\\s*${step}\\s*\\|[^|\\n]*\\|\\s*(done|pending)\\s*\\|`, 'i'));
-  return m ? (m[1].toLowerCase() as 'done' | 'pending') : 'unknown';
+  const m = content.match(new RegExp(`\\|\\s*${step}\\s*\\|[^|\\n]*\\|\\s*(done[^|]*|pending|skip)\\s*\\|`, 'i'));
+  if (!m) return 'unknown';
+  const status = m[1].trim().toLowerCase();
+  return (status.startsWith('done') || status === 'skip') ? 'done' : 'pending';
 }
 
 export function advanceIfStepDone(agentDir: string, next: NextAgentStep): NextAgentStep {
@@ -209,6 +242,26 @@ export function pickRoleByRotation(driverTurns: number, isCr: boolean): NextAgen
         : ['@docs/agent/CONTINUITY.md', '@docs/agent/ROLES.md', '@docs/agent/DEVELOPMENT.md'],
     };
   }
+  if (!isCr && driverTurns % 25 === 0) {
+    const postsDir = '/home/jenya/workspaces/web/izkaregn-website-2025/mlc-blog/posts';
+    const lastPost = fs.existsSync(postsDir)
+      ? fs.readdirSync(postsDir)
+          .filter((f) => f.endsWith('.html'))
+          .map((f) => fs.statSync(path.join(postsDir, f)).mtimeMs)
+          .reduce((max, t) => Math.max(max, t), 0)
+      : 0;
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    if (Date.now() - lastPost >= oneDayMs) {
+      return {
+        role: 'Blogger',
+        step: 'blog-post',
+        trackFile: 'TRACK_PLAN.md',
+        focus: 'stability',
+        reason: '25 driver turns - write blog post about recent progress',
+        refs: ['@docs/agent/CONTINUITY.md', '@docs/agent/BLOG.md', '@docs/agent/TRACK_PLAN.md'],
+      };
+    }
+  }
   if (!isCr && driverTurns % 8 === 0) {
     return {
       role: 'Planner',
@@ -217,6 +270,16 @@ export function pickRoleByRotation(driverTurns: number, isCr: boolean): NextAgen
       focus: 'stability',
       reason: '8 driver turns - plan refresh',
       refs: ['@docs/agent/CONTINUITY.md', '@docs/agent/PLAN.md', '@docs/agent/TRACK_PLAN.md'],
+    };
+  }
+  if (driverTurns % 18 === 0) {
+    return {
+      role: 'Monitor',
+      step: 'process-monitor',
+      trackFile: isCr ? 'TRACK_ORCH.md' : 'TRACK_PLAN.md',
+      focus: 'stability',
+      reason: '18 driver turns - process health check',
+      refs: ['@docs/agent/CONTINUITY.md', '@docs/agent/MONITOR.md', '@docs/agent/SESSION.md'],
     };
   }
   if (driverTurns % 6 === 0) {
@@ -228,6 +291,32 @@ export function pickRoleByRotation(driverTurns: number, isCr: boolean): NextAgen
       reason: '6 driver turns - re-audit recent done work',
       refs: ['@docs/agent/CONTINUITY.md', '@docs/agent/ROLES.md', '@docs/agent/SESSION.md'],
     };
+  }
+  if (!isCr && driverTurns % 35 === 0) {
+    return {
+      role: 'Reviewer',
+      step: 'history-review',
+      trackFile: 'TRACK_PLAN.md',
+      focus: 'stability',
+      reason: '35 driver turns - review closed tracks for missed work',
+      refs: ['@docs/agent/CONTINUITY.md', '@docs/agent/REVIEWER.md', '@docs/agent/PLAN.md'],
+    };
+  }
+  if (!isCr && driverTurns % 5 === 0) {
+    const orchTrack = '/home/jenya/workspaces/current/mlc/docs/agent/TRACK_ORCH_DEV.md';
+    const hasOpenSteps = fs.existsSync(orchTrack)
+      ? fs.readFileSync(orchTrack, 'utf8').includes('| pending |')
+      : false;
+    if (hasOpenSteps) {
+      return {
+        role: 'OrchestratorDev',
+        step: 'orch-dev',
+        trackFile: 'TRACK_ORCH_DEV.md',
+        focus: 'stability',
+        reason: '5 driver turns - orchestrator/cr development step',
+        refs: ['@docs/agent/CONTINUITY.md', '@docs/agent/TRACK_ORCH_DEV.md'],
+      };
+    }
   }
   return null;
 }
@@ -269,6 +358,23 @@ export function pickNextAgentStep(agentDir: string, session?: SessionInfo): Next
       }
     }
     return rotated;
+  }
+
+  // If active track has blocked skips but no pending steps → Planner to resolve blockers
+  const blockedTracks = tracks.filter(
+    (t) => t.inProgress && t.pendingSteps.length === 0 && t.hasBlockedSkip
+  );
+  if (blockedTracks.length > 0 && sess.roleLast !== 'Planner') {
+    return {
+      role: 'Planner',
+      step: 'plan-refresh',
+      trackFile: blockedTracks[0].file,
+      focus: 'stability',
+      reason: `${blockedTracks[0].file} has skip steps with unresolved blockers — create new tracks`,
+      refs: isCr
+        ? ['@docs/agent/CONTINUITY.md', `@docs/agent/${blockedTracks[0].file}`, '@docs/agent/RESEARCH.md']
+        : ['@docs/agent/CONTINUITY.md', `@docs/agent/${blockedTracks[0].file}`, '@docs/agent/RESEARCH.md', '@docs/agent/PLAN.md'],
+    };
   }
 
   const active = tracks
@@ -322,6 +428,37 @@ export function pickNextAgentStep(agentDir: string, session?: SessionInfo): Next
     });
   }
 
+  // No pending steps. Determine how many consecutive non-Driver turns already happened.
+  const roleLast = sess.roleLast ?? '';
+  const idleRoles: AgentRole[] = ['Planner', 'Researcher', 'Backlog', 'Reviewer'];
+  const consecutiveIdle = idleRoles.includes(roleLast as AgentRole) ? 1 : 0;
+  // If Planner just ran and still nothing → Researcher to find new work
+  if (consecutiveIdle > 0 && roleLast === 'Planner') {
+    return {
+      role: 'Researcher',
+      step: 'research-turn',
+      trackFile: isCr ? 'TRACK_ORCH.md' : 'TRACK_PLAN.md',
+      focus: 'stability',
+      reason: 'Planner ran but no pending steps created — find new work via RESEARCH.md',
+      refs: isCr
+        ? ['@docs/agent/CONTINUITY.md', '@docs/agent/RESEARCH.md']
+        : ['@docs/agent/CONTINUITY.md', '@docs/agent/RESEARCH.md', '@docs/agent/PLAN.md'],
+    };
+  }
+  // If Researcher just ran and still nothing → Backlog to check hygiene/drift
+  if (consecutiveIdle > 0 && roleLast === 'Researcher') {
+    return {
+      role: 'Backlog',
+      step: 'backlog-review',
+      trackFile: isCr ? 'TRACK_ORCH.md' : 'TRACK_PLAN.md',
+      focus: 'stability',
+      reason: 'Researcher ran but still no pending steps — check git vs TRACK drift',
+      refs: isCr
+        ? ['@docs/agent/CONTINUITY.md', '@docs/agent/TRACK_ORCH.md']
+        : ['@docs/agent/CONTINUITY.md', '@docs/agent/TRACK_PLAN.md', '@docs/agent/PLAN.md'],
+    };
+  }
+  // If Backlog/Reviewer just ran and still nothing → Planner again (last resort)
   return {
     role: 'Planner',
     step: 'plan-refresh',
@@ -353,6 +490,14 @@ export function buildNudgePrompt(next: NextAgentStep, token: string, targetId?: 
             ? 'Remove junk only: debug artifacts, stale docs, orphan dot-dirs. Keep active TRACK/PLAN/CONTINUITY/.cursor/rules. git status before delete.'
             : next.role === 'Backlog'
               ? 'PLAN vs TRACK vs git; flag drift. No compiler edits.'
+              : next.role === 'Blogger'
+              ? 'Write blog post about recently closed tracks. See BLOG.md for format and deploy instructions. Skip if nothing significant since last post.'
+              : next.role === 'Reviewer'
+              ? 'Review last 5-7 closed TRACK_*.md files for missed steps, TODOs, deferred work. Create new tracks or RESEARCH entries as needed. See REVIEWER.md.'
+              : next.role === 'OrchestratorDev'
+              ? 'Take next pending step from TRACK_ORCH_DEV.md. Work in cr workspace only. npm test gate. No compiler/ changes.'
+              : next.role === 'Monitor'
+              ? 'Check process health: SESSION.md updated, tracks progressing, cr logs fresh, role rotation working, plans non-empty. See MONITOR.md checklist. Output: one line "Monitor: OK" or "Monitor: WARN — <reason>" in SESSION. Queue corrective role if needed.'
               : `Focus: ${next.focus}. Verify gate from TRACK.`;
 
   const tail =

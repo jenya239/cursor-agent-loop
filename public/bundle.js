@@ -143,6 +143,20 @@
       const names = queuedTracks.map((t) => t.file.replace("TRACK_", "").replace(".md", "")).join(", ");
       trackHtml += `<p class="pr-dim">queued: ${esc2(names)}</p>`;
     }
+    const upcomingTracks = report.tracks.filter((t) => !t.closed && !t.inProgress).sort((a, b) => a.file.localeCompare(b.file));
+    if (upcomingTracks.length) {
+      const rows = upcomingTracks.map((t) => {
+        const name = t.file.replace("TRACK_", "").replace(".md", "");
+        return `<span class="pr-upcoming-name">${esc2(name)}</span>`;
+      }).join(" \xB7 ");
+      trackHtml += `<p class="pr-dim pr-upcoming">next: ${rows}</p>`;
+    }
+    if (report.plannedItems?.length) {
+      const rows = report.plannedItems.map(
+        (item) => `<div class="pr-planned-row">${esc2(item)}</div>`
+      ).join("");
+      trackHtml += `<details class="pr-planned"><summary class="pr-dim">plan phases</summary>${rows}</details>`;
+    }
     if (!trackHtml) trackHtml = '<p class="pr-dim">no active tracks</p>';
     const recentClosed = report.tracks.filter((t) => t.closed).sort((a, b) => (b.closedAt ?? "").localeCompare(a.closedAt ?? "")).slice(0, 5);
     if (recentClosed.length) {

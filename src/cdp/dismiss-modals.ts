@@ -27,6 +27,31 @@ export async function runDismissOnPage(
   return out;
 }
 
+export async function liveDismissModalsFromTargets(
+  targets: ReturnType<typeof workbenchPages>
+): Promise<DismissOutcome[]> {
+  const results: DismissOutcome[] = [];
+  for (const t of targets) {
+    try {
+      const evalJs: EvalJs = async (expr) =>
+        ({
+          result: {
+            value: (await evalOnPage(t, expr, true)) as {
+              open?: boolean;
+              action?: string;
+              btn?: string;
+            },
+          },
+        }) as Awaited<ReturnType<EvalJs>>;
+      const title = t.title?.slice(0, 40) ?? t.id;
+      results.push(...(await runDismissOnPage(evalJs, title)));
+    } catch {
+      /* skip unresponsive window */
+    }
+  }
+  return results;
+}
+
 export async function liveDismissModals(cdp: CdpPort): Promise<DismissOutcome[]> {
   if (!(await cdp.isAvailable())) return [];
   const results: DismissOutcome[] = [];

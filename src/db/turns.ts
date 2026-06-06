@@ -86,7 +86,7 @@ export function listWorkspaceTurns(options: {
   try {
     return database
       .prepare(
-        'SELECT * FROM turns WHERE workspace = ? ORDER BY id DESC LIMIT ?'
+        'SELECT * FROM turns WHERE workspace = ? ORDER BY id ASC LIMIT ?'
       )
       .all(options.workspace, limit) as TurnRow[];
   } finally {
