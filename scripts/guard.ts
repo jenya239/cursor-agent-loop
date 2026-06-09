@@ -16,9 +16,9 @@ import { resolveTargets, type AgentTarget } from '../src/cursor/agent-targets';
 import { sendKeys, capturePaneOutput } from '../src/tmux/panes';
 import { isExpensiveModel, probeWindowUsage } from './probe-usage';
 const CR_BASE = process.env.CR_BASE || 'http://127.0.0.1:3847';
-const LOG = process.env.CR_OVERNIGHT_LOG || path.join(os.homedir(), '.cursor', 'cr-overnight.log');
-const STATE = path.join(path.dirname(LOG), 'cr-overnight-state.json');
-const COOLDOWN_MS = Number(process.env.CR_OVERNIGHT_COOLDOWN_MS) || 15 * 60_000;
+const LOG = process.env.CR_LOG || path.join(os.homedir(), '.cursor', 'cursor-agent-loop.log');
+const STATE = path.join(path.dirname(LOG), 'cursor-agent-loop-state.json');
+const COOLDOWN_MS = Number(process.env.CR_COOLDOWN_MS) || 15 * 60_000;
 const USAGE_PAUSE_PCT = Number(process.env.CR_USAGE_PAUSE_PCT) || 100;
 const REPO = path.join(__dirname, '..');
 
@@ -64,7 +64,7 @@ async function waitHealth(maxMs = 30_000): Promise<boolean> {
 }
 
 function ensureServer(): void {
-  if (process.env.CR_OVERNIGHT_NO_RESTART === '1') return;
+  if (process.env.CR_NO_RESTART === '1') return;
   spawn('npm', ['run', 'dev:server'], {
     cwd: REPO,
     detached: true,
@@ -293,6 +293,7 @@ async function tickTarget(target: AgentTarget, usageWindows: Awaited<ReturnType<
     reader.close();
   }
 }
+
 /** Detect if a terminal agent pane is idle (showing a prompt, not generating). */
 function isTmuxPaneIdle(paneOutput: string): boolean {
   const lines = paneOutput.trimEnd().split('\n');
