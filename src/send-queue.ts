@@ -60,7 +60,7 @@ export class SendQueue {
 
 export function isAgentBusySendError(message: string): boolean {
   return (
-    message.includes('агент сейчас работает') ||
+    message.includes('agent is running') ||
     message.includes('composer submit failed') ||
     message.includes('revert modal') ||
     message.includes('composer not empty')

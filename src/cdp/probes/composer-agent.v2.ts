@@ -14,10 +14,10 @@ export const COMPOSER_AGENT_PROBE_V2_JS = `(() => {
   const agentsAria = agentsSend?.getAttribute('aria-label') || '';
   const stop =
     root.querySelector('.codicon-debug-stop') ||
-    (/stop|cancel|abort|останов/i.test(agentsAria) ? agentsSend : null);
+    (/stop|cancel|abort/i.test(agentsAria) ? agentsSend : null);
   const send =
     root.querySelector('button.composer-send-button, [data-testid="composer-send-button"]') ||
-    (!/stop|cancel|abort|останов/i.test(agentsAria) ? agentsSend : null);
+    (!/stop|cancel|abort/i.test(agentsAria) ? agentsSend : null);
   const controls = [];
   const add = (role, el) => {
     if (!el) return;
@@ -36,7 +36,7 @@ export const COMPOSER_AGENT_PROBE_V2_JS = `(() => {
     reason = 'spinner';
   } else {
     const sendLabel = send?.getAttribute('aria-label') || '';
-    if (/stop|cancel|abort|останов/i.test(sendLabel)) {
+    if (/stop|cancel|abort/i.test(sendLabel)) {
       busy = true;
       reason = 'send-label';
     }

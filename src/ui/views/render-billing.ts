@@ -10,7 +10,7 @@ export function renderBillingHtml(data: BillingView | null, error?: string): str
     return `<p class="billing-error">${esc(error)}</p>`;
   }
   if (!data?.entries.length) {
-    return '<p class="hint">Нет записей cost_entries — появятся после cursor_enqueue_send.</p>';
+    return '<p class="hint">No cost_entries records — they will appear after cursor_enqueue_send.</p>';
   }
   const rows = data.entries
     .map(

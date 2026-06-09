@@ -44,7 +44,7 @@ function roleCls(role: string): string {
 }
 
 function renderSessionTable(turns: SessionTurn[]): string {
-  if (!turns.length) return '<p class="pr-dim">нет данных SESSION.md</p>';
+  if (!turns.length) return '<p class="pr-dim">no SESSION.md data</p>';
   const rows = turns.map((t) => {
     const rc = roleCls(t.role);
     const gate = t.gate.replace(/build_tests\s*/i, '').replace(/;\s*build\.sh OK/i, '').trim();
@@ -59,13 +59,13 @@ function renderSessionTable(turns: SessionTurn[]): string {
     </tr>`;
   }).join('');
   return `<table class="pr-table">
-    <thead><tr><th>Время</th><th>Роль</th><th>Шаг</th><th>Сделано</th><th>Gate</th></tr></thead>
+    <thead><tr><th>Time</th><th>Role</th><th>Step</th><th>Done</th><th>Gate</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
 
 function renderMeetingsTable(meetings: MeetingSummary[]): string {
-  if (!meetings.length) return '<p class="pr-dim">нет meeting rooms</p>';
+  if (!meetings.length) return '<p class="pr-dim">no meeting rooms</p>';
   const rows = meetings.map((meeting) => {
     const status = meeting.endedAt ? esc(meeting.endedAt) : '<span class="pr-ok">open</span>';
     return `<tr>
@@ -76,20 +76,20 @@ function renderMeetingsTable(meetings: MeetingSummary[]): string {
     </tr>`;
   }).join('');
   return `<table class="pr-table">
-    <thead><tr><th>Дата</th><th>Тема</th><th>Slug</th><th>Статус</th></tr></thead>
+    <thead><tr><th>Date</th><th>Topic</th><th>Slug</th><th>Status</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
 
 function renderCommits(commits: GitCommit[]): string {
-  if (!commits.length) return '<p class="pr-dim">нет коммитов</p>';
+  if (!commits.length) return '<p class="pr-dim">no commits</p>';
   const rows = commits.map((c) => `<tr>
     <td class="pr-td-time">${esc(c.time.slice(5, 16))}</td>
     <td><code class="pr-hash">${esc(c.hash)}</code></td>
     <td class="pr-td-done">${esc(c.msg)}</td>
   </tr>`).join('');
   return `<table class="pr-table">
-    <thead><tr><th>Время</th><th>Hash</th><th>Сообщение</th></tr></thead>
+    <thead><tr><th>Time</th><th>Hash</th><th>Message</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -193,13 +193,13 @@ export function renderProgressHtml(report: ProgressReport): string {
   <h3 class="pr-section">Active track</h3>
   ${trackHtml}
 
-  <h3 class="pr-section">Ходы агента</h3>
+  <h3 class="pr-section">Agent turns</h3>
   ${renderSessionTable(report.sessionTurns)}
 
   <h3 class="pr-section">Meeting rooms</h3>
   ${renderMeetingsTable(report.meetings)}
 
-  <h3 class="pr-section">Коммиты</h3>
+  <h3 class="pr-section">Commits</h3>
   ${renderCommits(report.recentCommits)}
 
   <h3 class="pr-section">Recent activity (log)</h3>

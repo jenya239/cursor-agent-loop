@@ -18,7 +18,7 @@ describe('render-agent-panel', () => {
     };
     const el = document.createElement('div');
     applyAgentPanel(el, agentPanelModel(state));
-    expect(el.textContent).toContain('ЖДЁТ');
+    expect(el.textContent).toContain('IDLE');
     expect(el.dataset.phase).toBe('idle');
   });
 });

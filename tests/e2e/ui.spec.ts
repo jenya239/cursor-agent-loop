@@ -51,7 +51,7 @@ test('list, open chat, agent panel', async ({ page }) => {
   await item.click();
   const panel = page.locator('#agent-panel');
   await expect(panel).toBeVisible();
-  await expect(panel).toContainText('агент');
+  await expect(panel).toContainText('agent');
 });
 
 test('watchdog tab shows stats table', async ({ page }) => {

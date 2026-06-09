@@ -99,7 +99,7 @@ export class ChatStore {
       if (!this.fullScan) {
         if (this.chats.length) return;
         this.partial = true;
-        this.error = 'Индекс пуст. Запустите с FULL_SCAN=1 для полного скана.';
+        this.error = 'Index is empty. Run with FULL_SCAN=1 for a full scan.';
         return;
       }
 

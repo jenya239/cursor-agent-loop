@@ -54,7 +54,7 @@ export function agentPanelModel(state: UiState): AgentPanelModel {
   if (!st) {
     return {
       phase: 'unknown',
-      label: 'нет данных',
+      label: 'no data',
       cdpLine: '',
       dbLine: '',
       windowLine: '',
@@ -65,20 +65,20 @@ export function agentPanelModel(state: UiState): AgentPanelModel {
       composerId: state.activeComposerId,
     };
   }
-  const label = st.busy ? 'РАБОТАЕТ' : 'ЖДЁТ';
+  const label = st.busy ? 'RUNNING' : 'IDLE';
   const cdpLine = st.cdpOk
     ? st.cdpBusy
-      ? `Cursor занят (${st.cdpReason || '?'})`
-      : 'Cursor свободен'
-    : 'CDP недоступен';
+      ? `Cursor busy (${st.cdpReason || '?'})`
+      : 'Cursor free'
+    : 'CDP unavailable';
   const dbLine = st.dbBusy
-    ? `чат занят (${st.dbStatus || '?'})`
-    : 'чат свободен';
+    ? `chat busy (${st.dbStatus || '?'})`
+    : 'chat free';
   const windowLine = st.cdpWindowTitle ? ` · ${st.cdpWindowTitle}` : '';
   const n = state.snapshot?.windows?.length;
   const busyN = state.snapshot?.composerByWindow?.filter((w) => w.probe?.busy).length ?? 0;
   const cdpMeta =
-    state.snapshot?.cdp?.ok && n ? ` · CDP ${n} окн${busyN ? `, ${busyN} занято` : ''}` : '';
+    state.snapshot?.cdp?.ok && n ? ` · CDP ${n} win${busyN ? `, ${busyN} busy` : ''}` : '';
   const sw = state.snapshot?.switch;
   const switchLine = sw
     ? ` · switch: ${sw.ok ? 'ok' : 'fail'}(${sw.reason})${sw.switchTarget ? ` → ${sw.switchTarget}` : ''}`

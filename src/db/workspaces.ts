@@ -81,7 +81,7 @@ export function resolveWorkspace(
     return index.get(id)!;
   }
   if (id && /^\d{10,}$/.test(id)) {
-    return { workspaceId: id, path: '', label: 'без проекта' };
+    return { workspaceId: id, path: '', label: 'no project' };
   }
   return { workspaceId: id, path: '', label: '—' };
 }

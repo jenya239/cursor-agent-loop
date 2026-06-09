@@ -8,7 +8,7 @@ export function workspaceHintsFromChat(
   if (!chat) return [];
   const hints = new Set<string>();
   const label = chat.workspaceLabel?.trim();
-  if (label && label !== '—' && label !== 'без проекта') hints.add(label);
+  if (label && label !== '—' && label !== 'no project') hints.add(label);
   const p = chat.workspacePath?.replace(/\/$/, '') || '';
   if (p) {
     const base = path.basename(p);

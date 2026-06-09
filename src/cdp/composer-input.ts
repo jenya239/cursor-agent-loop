@@ -95,7 +95,7 @@ export const SUBMIT_COMPOSER_JS = `(() => {
   );
   if (agentsSend) {
     const aria = agentsSend.getAttribute('aria-label') || '';
-    if (/stop|cancel|abort|останов/i.test(aria)) {
+    if (/stop|cancel|abort/i.test(aria)) {
       return { ok: false, reason: 'agent-busy' };
     }
     if (agentsSend.disabled || agentsSend.getAttribute('aria-disabled') === 'true') {

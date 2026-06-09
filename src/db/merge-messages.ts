@@ -1,6 +1,6 @@
 import type { ChatMessage } from './types';
 
-/** Склеивает подряд идущие сообщения одной роли (особенно assistant). */
+/** Merges consecutive messages of the same role (especially assistant). */
 export function mergeMessages(msgs: ChatMessage[]): ChatMessage[] {
   const out: ChatMessage[] = [];
   for (const m of msgs) {

@@ -29,6 +29,6 @@ describe('FixtureApi', () => {
 
   it('send-blocked throws', async () => {
     api = new FixtureApi('send-blocked');
-    await expect(api.send('x')).rejects.toThrow(/агент/);
+    await expect(api.send('x')).rejects.toThrow(/agent/);
   });
 });

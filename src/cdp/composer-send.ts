@@ -81,7 +81,7 @@ async function liveComposerSend(
 
   const busy = await probeComposerAgentWindow(cdp, page.title);
   if (busy.cdpOk && busy.busy) {
-    throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
+    throw new Error('agent is running — wait or press Stop');
   }
 
   return withPage(page, async (send) => {
@@ -96,7 +96,7 @@ async function liveComposerSend(
 
     const agent = await probeBusyOnPage(send);
     if (agent?.busy) {
-      throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
+      throw new Error('agent is running — wait or press Stop');
     }
 
     const tryFocusClear = async () =>
@@ -206,7 +206,7 @@ async function liveComposerSend(
     if (!sub?.ok) {
       const why = sub?.reason || 'no-send-btn';
       if (why === 'agent-busy') {
-        throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
+        throw new Error('agent is running — wait or press Stop');
       }
       throw new Error(`composer submit failed: ${why}`);
     }

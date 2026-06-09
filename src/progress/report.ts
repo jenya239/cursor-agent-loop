@@ -133,7 +133,7 @@ function parsePlannedItems(agentDir?: string): string[] {
     const items: string[] = [];
     for (const m of content.matchAll(/^### (Phase \S+[^\n]*)\n([^\n]*)/gm)) {
       const phase = m[1].trim();
-      const desc = m[2].replace(/^\*\*Цель\*\*:\s*/i, '').trim();
+      const desc = m[2].replace(/^\*\*Goal\*\*:\s*/i, '').trim();
       if (desc) items.push(`${phase}: ${desc}`);
       else items.push(phase);
       if (items.length >= 8) break;

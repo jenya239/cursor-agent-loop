@@ -2,7 +2,7 @@ import type { ChatSummary } from '../../db/types';
 import { esc, shortPath } from './dom';
 
 export function renderListHtml(chats: ChatSummary[], activeId: string | null): string {
-  if (!chats.length) return '<p class="hint">Чатов нет</p>';
+  if (!chats.length) return '<p class="hint">No chats</p>';
   const groups = new Map<string, ChatSummary[]>();
   for (const c of chats) {
     const g = c.workspaceLabel || '—';

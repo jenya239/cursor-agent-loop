@@ -27,13 +27,13 @@ export const COMPOSER_AGENT_PROBE_JS = `(() => {
   const agentsAria = agentsSend?.getAttribute('aria-label') || '';
   const send =
     root.querySelector('button.composer-send-button, [data-testid="composer-send-button"]') ||
-    (!/stop|cancel|abort|останов/i.test(agentsAria) ? agentsSend : null);
+    (!/stop|cancel|abort/i.test(agentsAria) ? agentsSend : null);
   const stopBtn =
     root.querySelector(
-      '.codicon-debug-stop, [aria-label*="Stop" i], [aria-label*="останов" i], button.composer-stop-button'
+      '.codicon-debug-stop, [aria-label*="Stop" i], button.composer-stop-button'
     ) ||
     bar.querySelector('.codicon-debug-stop') ||
-    (/stop|cancel|abort|останов/i.test(agentsAria) ? agentsSend : null);
+    (/stop|cancel|abort/i.test(agentsAria) ? agentsSend : null);
   const controls = [];
   const add = (role, el) => {
     if (!el) return;
@@ -51,7 +51,7 @@ export const COMPOSER_AGENT_PROBE_JS = `(() => {
   } else if (stopBtn) {
     busy = true;
     reason = 'stop-control';
-  } else if (/stop|cancel|abort|останов/i.test(sendLabel)) {
+  } else if (/stop|cancel|abort/i.test(sendLabel)) {
     busy = true;
     reason = 'send-label';
   } else if (root.querySelector('[aria-busy="true"], .composer-loading, .composer-generating')) {

@@ -30,7 +30,7 @@ describe('FixtureCdp scenarios', () => {
 
   it('send-blocked throws', async () => {
     const cdp = new FixtureCdp('send-blocked');
-    await expect(cdp.sendMessage('x')).rejects.toThrow(/агент/);
+    await expect(cdp.sendMessage('x')).rejects.toThrow(/agent/);
   });
 
   it('draft-stuck clears after clearComposerDraft', async () => {

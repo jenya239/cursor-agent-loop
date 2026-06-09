@@ -25,7 +25,7 @@ export async function loadWatchdogPanelHtml(
   const ct = wdRes.headers.get('content-type') || '';
   if (!wdRes.ok) {
     if (wdRes.status === 404) {
-      return renderWatchdogHtml(null, 'нет /api/watchdog/stats — перезапусти npm run dev', agent);
+      return renderWatchdogHtml(null, 'no /api/watchdog/stats — restart npm run dev', agent);
     }
     if (ct.includes('json')) {
       const body = (await wdRes.json()) as { error?: string };

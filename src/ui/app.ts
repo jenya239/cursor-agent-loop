@@ -208,7 +208,7 @@ export function boot(): void {
   function render(s: ReturnType<CrStore['get']>) {
     const panel = agentPanelModel(s);
     applyAgentPanel(agentPanelEl, panel);
-    agentIndicatorEl.textContent = `AGENT · ${s.agentBusy ? 'работает' : 'ждёт'}`;
+    agentIndicatorEl.textContent = `AGENT · ${s.agentBusy ? 'running' : 'idle'}`;
     agentIndicatorEl.className = `agent-indicator ${s.agentBusy ? 'busy' : 'idle'}`;
     agentIndicatorEl.title = agentPanelEl.textContent;
 
@@ -232,7 +232,7 @@ export function boot(): void {
       const cur = s.cdpWindowTitle;
       const opts = cdpWindowOptions(s);
       const newCdpHtml =
-        '<option value="">окно CDP (авто)</option>' +
+        '<option value="">CDP window (auto)</option>' +
         opts.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
       if (newCdpHtml !== lastCdpWindowHtml) {
         lastCdpWindowHtml = newCdpHtml;
@@ -276,7 +276,7 @@ export function boot(): void {
     const cur = wsFilterEl.value;
     const items = workspaceOptions(chats);
     wsFilterEl.innerHTML =
-      '<option value="">все</option>' +
+      '<option value="">all</option>' +
       items
         .map(
           (w) =>
@@ -290,7 +290,7 @@ export function boot(): void {
     scheduler.halt();
     store.dispatch({ type: 'SELECT_CHAT', composerId: id });
     saveLastChat(id);
-    chatEl.innerHTML = '<p class="loading">Загрузка…</p>';
+    chatEl.innerHTML = '<p class="loading">Loading…</p>';
     setComposeEnabled(true);
     try {
       const chat = await scheduler.refreshChat(id, true, true);
@@ -317,7 +317,7 @@ export function boot(): void {
     if (s.agentBusy) return;
     if (isComposerMismatch(s)) {
       const ok = window.confirm(
-        'Выбранный чат может не совпадать с активным composer в Cursor. Отправить всё равно?'
+        'The selected chat may not match the active composer in Cursor. Send anyway?'
       );
       if (!ok) return;
     }
@@ -330,11 +330,11 @@ export function boot(): void {
     composeInput.blur();
     scheduler.halt();
     const prevStatus = store.get().status;
-    store.dispatch({ type: 'STATUS', text: 'Отправка…', loading: true });
+    store.dispatch({ type: 'STATUS', text: 'Sending…', loading: true });
     try {
       const r = await api.send(draft, s.activeComposerId, s.cdpWindowTitle || undefined);
       const where = r.pageTitle ? ` → ${r.pageTitle}` : '';
-      store.dispatch({ type: 'STATUS', text: `отправлено${where}`, loading: false });
+      store.dispatch({ type: 'STATUS', text: `sent${where}`, loading: false });
       await scheduler.refreshChat(s.activeComposerId, true);
       const chat = store.get();
       if (chat.messages.length) {
@@ -353,7 +353,7 @@ export function boot(): void {
       composeInput.value = draft;
       store.dispatch({
         type: 'STATUS',
-        text: 'Ошибка: ' + (e instanceof Error ? e.message : String(e)),
+        text: 'Error: ' + (e instanceof Error ? e.message : String(e)),
         loading: false,
       });
       lastSendText = '';
@@ -366,7 +366,7 @@ export function boot(): void {
 
   function onListError(e: unknown) {
     listEl.innerHTML = `<p class="err">${esc(e instanceof Error ? e.message : String(e))}</p>`;
-    store.dispatch({ type: 'STATUS', text: 'Ошибка', loading: false });
+    store.dispatch({ type: 'STATUS', text: 'Error', loading: false });
     refreshBtn.disabled = false;
   }
 
@@ -374,8 +374,8 @@ export function boot(): void {
     if (embedWarn) embedWarn.hidden = false;
     composeInput.disabled = true;
     composeSend.disabled = true;
-    composeInput.placeholder = 'Только из внешнего браузера';
-    store.dispatch({ type: 'STATUS', text: 'открой 127.0.0.1:3847 в Firefox/Chrome', loading: false });
+    composeInput.placeholder = 'External browser only';
+    store.dispatch({ type: 'STATUS', text: 'open 127.0.0.1:3847 in Firefox/Chrome', loading: false });
   } else {
     composeSend.addEventListener('click', () => void submitCompose());
     composeInput.addEventListener('keydown', (e) => {
@@ -400,7 +400,7 @@ export function boot(): void {
 
   refreshBtn.addEventListener('click', () => {
     refreshBtn.disabled = true;
-    store.dispatch({ type: 'STATUS', text: 'Обновление…', loading: true });
+    store.dispatch({ type: 'STATUS', text: 'Refreshing…', loading: true });
     void (async () => {
       try {
         await api.refreshDb();
@@ -410,7 +410,7 @@ export function boot(): void {
       } catch (e) {
         store.dispatch({
           type: 'STATUS',
-          text: 'Ошибка: ' + (e instanceof Error ? e.message : String(e)),
+          text: 'Error: ' + (e instanceof Error ? e.message : String(e)),
           loading: false,
         });
       } finally {

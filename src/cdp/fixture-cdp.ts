@@ -325,7 +325,7 @@ export class FixtureCdp implements CdpPort {
     if (this.scenario === 'down') throw new Error('cdp unavailable');
     if (this.scenario === 'no-bar') throw new Error('composer no-bar');
     if (this.scenario === 'send-blocked') {
-      throw new Error('агент сейчас работает — дождитесь или нажмите Stop');
+      throw new Error('agent is running — wait or press Stop');
     }
     if (this.scenario === 'draft-stuck' && this.draftStuck) {
       throw new Error(

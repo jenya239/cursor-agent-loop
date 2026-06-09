@@ -43,7 +43,7 @@ export function buildComposerSwitchJs(composerId: string, chatName?: string): st
         if (t && t.includes(chatName) && click(el)) return { ok: true, reason: 'history-name' };
       }
     }
-    const rows = document.querySelectorAll('[aria-label*="Chat" i], [aria-label*="чат" i]');
+    const rows = document.querySelectorAll('[aria-label*="Chat" i]');
     for (const el of rows) {
       if (chatName && (el.getAttribute('aria-label') || '').includes(chatName) && click(el)) {
         return { ok: true, reason: 'aria-chat' };
