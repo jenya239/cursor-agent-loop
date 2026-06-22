@@ -4,7 +4,7 @@ import type { WindowObservation } from '../watchdog/window-observation';
 export type AgentTransport = 'cdp' | 'tmux';
 
 export interface AgentTarget {
-  id: 'mlc' | 'cr';
+  id: 'mlc' | 'cr' | 'loop';
   transport: AgentTransport;
   composerId: string;
   paneId?: string;
@@ -46,12 +46,12 @@ export const AGENT_TARGETS: AgentTarget[] = [
     standardOnly: true,
   },
   {
-    id: 'cr',
+    id: 'loop',
     transport: transportForTarget('cr'),
     composerId: process.env.CR_SELF_COMPOSER_ID || '90b0b877-3af6-4ab7-91ae-4d259b3e6e21',
     paneId: paneIdForTarget('cr'),
     agentDir: process.env.CR_AGENT_DIR || path.join(REPO, 'docs/agent'),
-    windowHint: 'cr',
+    windowHint: 'cursor-agent-loop',
     fastOnly: true,
     standardOnly: false,
   },
@@ -103,5 +103,5 @@ export function resolveTargets(spec?: string): AgentTarget[] {
     const hit = targetForComposer(cid);
     if (hit) return [hit];
   }
-  return [AGENT_TARGETS.find((t) => t.id === 'cr')!];
+  return [AGENT_TARGETS.find((t) => t.id === 'mlc')!];
 }
