@@ -160,7 +160,7 @@ function checkHistoryAndPending(
     }
     const tail = source === 'guard' ? 6 : 8;
     const n = countRecentSameKey(messages, key, tail);
-    const maxSame = source === 'guard' ? 1 : 2;
+    const maxSame = source === 'guard' ? 2 : 2;
     if (n >= maxSame) {
       return { allow: false, reason: `step ${key} already sent ${n}x in chat` };
     }

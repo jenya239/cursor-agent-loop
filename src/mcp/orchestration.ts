@@ -3,6 +3,8 @@ import os from 'os';
 import path from 'path';
 import { liveCdp } from '../cdp/live-cdp';
 import { buildNudgePrompt, pickNextAgentStep } from '../cursor/agent_next';
+import { appendSelfQueueItem, readSelfQueue } from '../cursor/self-queue';
+import { resolveBoundComposer } from '../cursor/token-bind';
 import { AGENT_TARGETS, managedWindowTitle, resolveTargets, targetForComposer, type AgentTarget } from '../cursor/agent-targets';
 import {
   analyzeSupervisor,
@@ -73,7 +75,9 @@ export function mcpAgentNext(args: Record<string, unknown>): Record<string, unkn
 
 export async function mcpUsage(): Promise<Record<string, unknown>> {
   const windows = await probeWindowUsage(liveCdp);
-  return { maxUsagePct: maxUsagePct(windows), windows };
+  const { probeSettingsUsage } = await import('../cdp/settings-usage');
+  const settings = await probeSettingsUsage(liveCdp).catch(() => null);
+  return { maxUsagePct: maxUsagePct(windows), windows, settings };
 }
 
 export async function mcpAgentState(args: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -96,6 +100,27 @@ export async function mcpAgentState(args: Record<string, unknown>): Promise<Reco
     }
   }
   return getAgentState(target?.id);
+}
+
+export function mcpEnqueueTask(args: Record<string, unknown>): Record<string, unknown> {
+  const token = typeof args.token === 'string' ? args.token.trim() : '';
+  if (!token) return { ok: false, reason: 'token required — pass AGENT_TOKEN' };
+
+  const step = String(args.step ?? '');
+  if (!step) return { ok: false, reason: 'step required' };
+  const reason = String(args.reason ?? 'agent self-enqueue');
+  const role = String(args.role ?? 'Driver');
+  const track = args.track ? String(args.track) : undefined;
+
+  // resolve target via token → composerId
+  const bound = resolveBoundComposer(token);
+  const composerId = bound ?? undefined;
+  const target = (composerId ? targetForComposer(composerId) : null) ?? resolveTargets()[0];
+  if (!target) return { ok: false, reason: 'cannot resolve target from token' };
+
+  appendSelfQueueItem(target.agentDir, { role, step, track, reason });
+  const queue = readSelfQueue(target.agentDir);
+  return { ok: true, target: target.id, queued: { role, step, track, reason }, pending: queue.length };
 }
 
 export function mcpOvernightState(args: Record<string, unknown>): Record<string, unknown> {

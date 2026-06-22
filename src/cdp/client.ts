@@ -87,7 +87,6 @@ export const HAS_COMPOSER_JS = `!!(
 export async function pageHasComposer(page: CdpTarget): Promise<boolean> {
   const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
   try {
-    await send('Runtime.enable');
     const r = (await send('Runtime.evaluate', {
       expression: HAS_COMPOSER_JS,
       returnByValue: true,
@@ -109,7 +108,6 @@ export async function pickWorkbenchWithComposer(
   for (const page of tryList) {
     const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
     try {
-      await send('Runtime.enable');
       const r = (await send('Runtime.evaluate', {
         expression: HAS_COMPOSER_JS,
         returnByValue: true,

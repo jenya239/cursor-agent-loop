@@ -1,4 +1,4 @@
-import { pickWorkbenchWithComposer } from './client';
+import { pickWorkbenchWithComposer, workbenchPages } from './client';
 import { isFixtureCdp } from './fixture-cdp';
 import { withPage } from './live-page';
 import {
@@ -74,7 +74,7 @@ async function liveComposerSend(
   const targets = await cdp.listTargets();
   let page = await pickWorkbenchWithComposer(targets);
   if (windowTitle) {
-    const match = targets.find((t) => (t.title || '').includes(windowTitle));
+    const match = workbenchPages(targets).find((t) => (t.title || '').includes(windowTitle));
     if (match) page = match;
   }
   if (!page) throw new Error('no Cursor window with composer');

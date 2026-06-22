@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { peekSelfQueue } from './self-queue';
 
 export const INSTRUCTIONS_REV = '2026-05-28-cleaner';
 
@@ -345,6 +346,10 @@ export function pickDriverStep(agentDir: string): NextAgentStep | null {
 }
 
 export function pickNextAgentStep(agentDir: string, session?: SessionInfo): NextAgentStep {
+  // Self-queue has highest priority — agent inserted a task for itself
+  const selfQueued = peekSelfQueue(agentDir);
+  if (selfQueued) return selfQueued;
+
   const tracks = listTracks(agentDir);
   const sess = session ?? parseSession(path.join(agentDir, 'SESSION.md'));
   const isCr = agentDir.replace(/\\/g, '/').includes('/cr/docs/agent');

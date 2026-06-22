@@ -13,6 +13,7 @@ import {
   trimMessages,
 } from './serialize';
 import { mcpAgentNext, mcpAgentState, mcpOvernightState, mcpSupervisor, mcpUsage } from './orchestration';
+import { mcpEnqueueTask } from './orchestration';
 
 export const MCP_TOOL_NAMES = [
   'cursor_agent_register',
@@ -23,6 +24,7 @@ export const MCP_TOOL_NAMES = [
   'cursor_send',
   'cursor_enqueue_send',
   'cursor_send_queue_list',
+  'cursor_enqueue_task',
   'cursor_send_queue_flush',
   'cursor_refresh_db',
   'cursor_cdp_status',
@@ -199,6 +201,8 @@ export function createCrMcpHandlers(deps: CrMcpDeps) {
           }
           case 'cursor_send_queue_list':
             return ok({ items: deps.listSendQueue() });
+          case 'cursor_enqueue_task':
+            return ok(mcpEnqueueTask(args));
           case 'cursor_send_queue_flush':
             return ok(await deps.drainSendQueue());
           case 'cursor_refresh_db':

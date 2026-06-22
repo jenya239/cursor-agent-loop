@@ -6,7 +6,6 @@ export async function withPage<T>(
 ): Promise<T> {
   const { send, close } = await connectCdp(page.webSocketDebuggerUrl);
   try {
-    await send('Runtime.enable');
     return await fn(send);
   } finally {
     close();

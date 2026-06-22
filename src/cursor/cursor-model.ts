@@ -245,7 +245,7 @@ export class CursorModel {
 
   async send(
     text: string,
-    opts: { token: string; windowTitle?: string; composerId?: string }
+    opts: { token: string; windowTitle?: string; composerId?: string; force?: boolean }
   ): Promise<{ ok: true; text: string; pageTitle: string; composerId?: string; target?: string }> {
     const trimmed = text.trim();
     const target = await resolveSendTarget(this.cdp, {
@@ -254,17 +254,19 @@ export class CursorModel {
       db: this.store.reader,
     });
     const { messages } = this.store.getChat(target.composerId, true);
-    const loop = checkEnqueueLoop({
-      composerId: target.composerId,
-      text: trimmed,
-      historyMessages: messages,
-      pendingTexts: this.sendQueue
-        .list()
-        .filter((q) => q.composerId === target.composerId)
-        .map((q) => q.text),
-    });
-    if (!loop.allow) throw new Error(`send blocked: ${loop.reason}`);
-    const payload = loop.adjustedText ?? trimmed;
+    if (!opts.force) {
+      const loop = checkEnqueueLoop({
+        composerId: target.composerId,
+        text: trimmed,
+        historyMessages: messages,
+        pendingTexts: this.sendQueue
+          .list()
+          .filter((q) => q.composerId === target.composerId)
+          .map((q) => q.text),
+      });
+      if (!loop.allow) throw new Error(`send blocked: ${loop.reason}`);
+    }
+    const payload = trimmed;
     const summary = this.store.getChats().chats.find((c) => c.composerId === target.composerId);
     const hints = workspaceHintsFromChat(summary);
     const open = await findWindowForComposerId(this.cdp, target.composerId, hints);

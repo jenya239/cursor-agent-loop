@@ -11,6 +11,8 @@ export interface AgentTarget {
   agentDir: string;
   windowHint: string;
   fastOnly: boolean;
+  /** Skip send if model contains "fast" — enforce standard model usage */
+  standardOnly: boolean;
 }
 
 function transportForTarget(targetId: 'mlc' | 'cr'): AgentTransport {
@@ -40,7 +42,8 @@ export const AGENT_TARGETS: AgentTarget[] = [
     paneId: paneIdForTarget('mlc'),
     agentDir: process.env.MLC_AGENT_DIR || path.join(REPO, '../mlc/docs/agent'),
     windowHint: 'mlc',
-    fastOnly: true,
+    fastOnly: false,
+    standardOnly: true,
   },
   {
     id: 'cr',
@@ -50,6 +53,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
     agentDir: process.env.CR_AGENT_DIR || path.join(REPO, 'docs/agent'),
     windowHint: 'cr',
     fastOnly: true,
+    standardOnly: false,
   },
 ];
 

@@ -43,7 +43,13 @@ npm run guard:mlc                   # single guard tick for mlc target
 
 ## MCP
 
-Register in Cursor's `.cursor/mcp.json` after `npm run build`. Tools: `cursor_agent_register`, `cursor_agent_resolve`, `cursor_enqueue_send`, `cursor_send`, `cursor_session`, `cursor_snapshot`, `cursor_get_chat`.
+После `npm install && npm run build` — `.cursor/mcp.json` в репо (или скопировать в `~/.cursor/mcp.json`).
+
+**Важно:** `command` должен быть системный `node` (тот же, под которым делали `npm install`). Bundled node из Cursor (v22) не совместим с `better-sqlite3`, собранным под v24+.
+
+Перезагрузка: Cursor Settings → MCP → agent-loop → Reload.
+
+Tools: `cursor_agent_register`, `cursor_agent_resolve`, `cursor_enqueue_send`, `cursor_send`, `cursor_session`, `cursor_snapshot`, `cursor_get_chat`.
 
 ## Tests
 

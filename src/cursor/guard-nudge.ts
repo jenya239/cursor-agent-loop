@@ -20,8 +20,8 @@ export type GuardPlan =
 
 function recoveryStep(targetId: string): NextAgentStep {
   return {
-    role: 'Meta',
-    step: 'meta-review',
+    role: 'Driver',
+    step: 'recovery',
     trackFile: targetId === 'cr' ? 'TRACK_ORCH.md' : 'TRACK_PLAN.md',
     focus: 'stability',
     reason: 'Orchestration recovery: step loop or stuck turn',
@@ -61,17 +61,21 @@ export function planGuardNudge(opts: {
     return { action: 'skip', reason: 'turn pending in chat' };
   }
 
+  const recovKey = promptKey({ role: 'Driver', step: 'recovery' });
+  const recovBlocked = countRecentSameKey(opts.messages, recovKey, 6) >= 1;
+
   if (
     lastMsg?.role === 'assistant' &&
     lastUserKey &&
     lastUserKey === nextKey &&
-    next.role === 'Driver'
+    next.role === 'Driver' &&
+    !recovBlocked
   ) {
     const r = splitRecovery(opts.token, opts.targetId, `stuck ${lastUserKey} after assistant`);
     return { action: 'recovery', reason: r.reason, text: r.text, role: r.role, step: r.step };
   }
 
-  if (next.role === 'Driver' && countRecentSameKey(opts.messages, nextKey) >= 2) {
+  if (next.role === 'Driver' && countRecentSameKey(opts.messages, nextKey) >= 2 && !recovBlocked) {
     const r = splitRecovery(opts.token, opts.targetId, `step ${nextKey} loop`);
     return { action: 'recovery', reason: r.reason, text: r.text, role: r.role, step: r.step };
   }
@@ -87,9 +91,13 @@ export function planGuardNudge(opts: {
   });
 
   if (!loop.allow) {
-    if (/already answered|already ran|waiting in chat/i.test(loop.reason ?? '')) {
+    if (!recovBlocked && /already answered|already ran|waiting in chat/i.test(loop.reason ?? '')) {
       const r = splitRecovery(opts.token, opts.targetId, loop.reason ?? 'blocked');
       return { action: 'recovery', reason: r.reason, text: r.text, role: r.role, step: r.step };
+    }
+    // Recovery blocked + aborted turn: force-resend same step
+    if (recovBlocked && /already ran|already answered/i.test(loop.reason ?? '') && next.role === 'Driver') {
+      return { action: 'send', text, role: next.role, step: next.step };
     }
     // Rotated non-Driver step is deduped — fall back to the pending Driver step.
     if (next.role !== 'Driver') {

@@ -87,6 +87,19 @@ export function registerCrMcpTools(server: McpServer, deps: CrMcpDeps): void {
   server.tool('cursor_send_queue_list', 'List pending queued sends', {}, wrap('cursor_send_queue_list'));
 
   server.tool(
+    'cursor_enqueue_task',
+    'Enqueue a sub-task for the calling agent when blocked mid-step. Guard will send it next before resuming normal track steps. Requires AGENT_TOKEN.',
+    {
+      token: z.string().describe('Your AGENT_TOKEN from the current prompt'),
+      step: z.string().describe('Step identifier, e.g. fix-parse-bug'),
+      reason: z.string().describe('Why this task is needed'),
+      role: z.string().optional().describe('Role: Driver|Meta|Planner (default Driver)'),
+      track: z.string().optional().describe('Optional TRACK_*.md file this relates to'),
+    },
+    wrap('cursor_enqueue_task')
+  );
+
+  server.tool(
     'cursor_send_queue_flush',
     'Try to send all queued messages now',
     {},
@@ -148,7 +161,7 @@ export function registerCrMcpTools(server: McpServer, deps: CrMcpDeps): void {
 
 export function createCrMcpServer(deps: CrMcpDeps): McpServer {
   const server = new McpServer(
-    { name: 'cr-cursor', version: '0.1.0' },
+    { name: 'agent-loop', version: '0.1.0' },
     {
       instructions:
         'Agent identity: 1) cursor_agent_register 2) cursor_agent_resolve(token) 3) cursor_enqueue_send/send with token. Orchestration: cursor_supervisor, cursor_agent_next, cursor_agent_state, cursor_usage, cursor_overnight_state (no token). Health before enqueue: cursor_session + cursor_usage.',

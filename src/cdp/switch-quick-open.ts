@@ -1,4 +1,4 @@
-import { pickWorkbenchWithComposer, type CdpTarget } from './client';
+import { pickWorkbenchWithComposer, workbenchPages, type CdpTarget } from './client';
 import { withPage } from './live-page';
 
 /** Fallback: Cmd/Ctrl+P then type chat id/name (v2). */
@@ -12,7 +12,7 @@ export async function switchViaQuickOpen(
 
   let page = await pickWorkbenchWithComposer(targets);
   if (windowTitle) {
-    const match = targets.find((t) => (t.title || '').includes(windowTitle));
+    const match = workbenchPages(targets).find((t) => (t.title || '').includes(windowTitle));
     if (match) page = match;
   }
   if (!page) return { ok: false, reason: 'no-window' };

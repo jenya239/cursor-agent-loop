@@ -62,10 +62,14 @@ export const FOCUS_CLEAR_INPUT_JS = `(() => {
   if (draft.length > 40 || draft.includes('AGENT_TOKEN=')) {
     return { ok: false, reason: 'composer-not-empty', draftLen: draft.length, draftPreview: draft.slice(0, 40) };
   }
-  el.scrollIntoView({ block: 'nearest' });
-  el.focus();
-  el.click();
   const r = el.getBoundingClientRect();
+  const vw = window.innerWidth || document.documentElement.clientWidth;
+  const vh = window.innerHeight || document.documentElement.clientHeight;
+  const inViewport = r.top >= 0 && r.left >= 0 && r.bottom <= vh && r.right <= vw && r.width > 0 && r.height > 0;
+  if (!inViewport) {
+    return { ok: false, reason: 'bar-not-in-viewport', rect: { top: r.top, bottom: r.bottom, vh } };
+  }
+  el.focus();
   const active = document.activeElement;
   return {
     ok: true,

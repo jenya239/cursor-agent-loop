@@ -14,15 +14,27 @@ import { syncAgentState } from '../src/cursor/agent-state';
 import { analyzeSupervisor, guardBlockedAlerts, loadSupervisorReport } from '../src/supervisor/analyze';
 import { resolveTargets, type AgentTarget } from '../src/cursor/agent-targets';
 import { sendKeys, capturePaneOutput } from '../src/tmux/panes';
-import { isExpensiveModel, probeWindowUsage } from './probe-usage';
+import { isExpensiveModel, probeWindowUsage } from '../src/cursor/probe-usage';
+import { checkCycleLimit } from '../src/billing/cycle-limit';
+import { probeSettingsUsage, saveUsageSnapshot, listUsageSnapshots, type CursorUsageSnapshot } from '../src/cdp/settings-usage';
+import { completeSelfQueueItem } from '../src/cursor/self-queue';
 const CR_BASE = process.env.CR_BASE || 'http://127.0.0.1:3847';
 const LOG = process.env.CR_LOG || path.join(os.homedir(), '.cursor', 'cursor-agent-loop.log');
 const STATE = path.join(path.dirname(LOG), 'cursor-agent-loop-state.json');
-const COOLDOWN_MS = Number(process.env.CR_COOLDOWN_MS) || 15 * 60_000;
+const COOLDOWN_MS = process.env.CR_COOLDOWN_MS != null ? Number(process.env.CR_COOLDOWN_MS) : 15 * 60_000;
 const USAGE_PAUSE_PCT = Number(process.env.CR_USAGE_PAUSE_PCT) || 100;
 const REPO = path.join(__dirname, '..');
 
-type StateFile = Record<string, { lastNudgeAt?: number; token?: string; noWindowUntil?: number }>;
+type TargetState = {
+  lastNudgeAt?: number;
+  token?: string;
+  noWindowUntil?: number;
+  /** promptKey seen on last tick while busy+aborted */
+  lastAbortedKey?: string;
+  /** consecutive ticks with same promptKey + dbStatus=aborted */
+  abortedTicks?: number;
+};
+type StateFile = Record<string, TargetState> & { _global?: { pauseUntil?: number } };
 
 function log(msg: string, extra?: Record<string, unknown>) {
   const line = JSON.stringify({ at: new Date().toISOString(), msg, ...extra });
@@ -104,7 +116,11 @@ async function watchdogStats(): Promise<Record<string, unknown> | null> {
   }
 }
 
-async function tickTarget(target: AgentTarget, usageWindows: Awaited<ReturnType<typeof probeWindowUsage>>) {
+async function tickTarget(
+  target: AgentTarget,
+  usageWindows: Awaited<ReturnType<typeof probeWindowUsage>>,
+  settingsUsage: CursorUsageSnapshot | null
+) {
   const st = loadState();
   const entry = st[target.id] ?? {};
 
@@ -138,6 +154,35 @@ async function tickTarget(target: AgentTarget, usageWindows: Awaited<ReturnType<
   if (target.fastOnly && winUsage && isExpensiveModel(winUsage.model)) {
     log('expensive model', { target: target.id, model: winUsage.model });
     return;
+  }
+  if (target.standardOnly && winUsage?.model && /fast/i.test(winUsage.model)) {
+    log('fast model — skip (standardOnly)', { target: target.id, model: winUsage.model });
+    return;
+  }
+  if (process.env.CR_USAGE_LIMIT !== '0') {
+    const usageLimitPct = Number(process.env.CR_USAGE_LIMIT_PCT) || 90;
+    if (settingsUsage) {
+      if (settingsUsage.autoComposerPct != null && settingsUsage.autoComposerPct >= usageLimitPct) {
+        log('usage limit reached — stopping', {
+          target: target.id,
+          autoComposerPct: settingsUsage.autoComposerPct,
+          limit: usageLimitPct,
+        });
+        return;
+      }
+    } else {
+      // fallback: count-based cycle limit
+      const limit = checkCycleLimit();
+      if (!limit.allowed) {
+        log('cycle limit exceeded — stopping', {
+          target: target.id,
+          sendsSinceCycleStart: limit.sendsSinceCycleStart,
+          allowedSoFar: limit.allowedSoFar,
+          daysElapsed: limit.daysElapsed,
+        });
+        return;
+      }
+    }
   }
   if (session.modal !== 'none') return;
   if (session.queueLength > 0) {
@@ -205,7 +250,7 @@ async function tickTarget(target: AgentTarget, usageWindows: Awaited<ReturnType<
       busy: session.agent.busy,
       dbStatus: session.agent.dbStatus,
       reconnecting,
-      slowCount: winUsage?.slowCount,
+      slowCount: winUsage?.slowCount ?? undefined,
     });
     log('agent state', {
       target: target.id,
@@ -219,9 +264,55 @@ async function tickTarget(target: AgentTarget, usageWindows: Awaited<ReturnType<
       log('stuck skip', { target: target.id, phase: agentSt.phase });
       return;
     }
-    if (session.agent.busy) return;
+
+    // Detect agent stuck on same step with repeated aborted turns
+    const STUCK_ABORTED_THRESHOLD = Number(process.env.CR_STUCK_ABORTED_TICKS) || 4;
+    let forceRecovery = false;
+    if (session.agent.busy && session.agent.dbStatus === 'aborted' && agentSt.promptKey) {
+      const prevKey = entry.lastAbortedKey;
+      const ticks = (entry.abortedTicks ?? 0) + (prevKey === agentSt.promptKey ? 1 : 0);
+      st[target.id] = { ...entry, lastAbortedKey: agentSt.promptKey, abortedTicks: ticks };
+      saveState(st);
+      if (ticks >= STUCK_ABORTED_THRESHOLD) {
+        log('stuck aborted — forcing recovery', {
+          target: target.id,
+          promptKey: agentSt.promptKey,
+          ticks,
+        });
+        // Stop the stuck agent and wait until it's no longer busy
+        try {
+          await liveCdp.stopAgent({ windowTitle: session.windowTitle });
+          for (let w = 0; w < 10; w++) {
+            await new Promise((r) => setTimeout(r, 1000));
+            const check = await serverSession(target.composerId);
+            if (!check.agent.busy) break;
+          }
+        } catch {
+          /* ignore stop errors */
+        }
+        forceRecovery = true;
+        st[target.id] = { ...entry, lastAbortedKey: undefined, abortedTicks: 0 };
+        saveState(st);
+      } else {
+        log('aborted tick', { target: target.id, promptKey: agentSt.promptKey, ticks });
+        return;
+      }
+    } else if (!session.agent.busy) {
+      // reset counter on completion
+      if (entry.abortedTicks) {
+        st[target.id] = { ...entry, lastAbortedKey: undefined, abortedTicks: 0 };
+        saveState(st);
+      }
+    }
+
+    if (session.agent.busy && !forceRecovery) return;
 
     const reg = await cursor.registerAgentToken({ composerId: target.composerId });
+
+    // Mark completed self-queue item if the last sent step matches
+    if (agentSt.phase === 'turn_done' && entry.token) {
+      completeSelfQueueItem(target.agentDir, agentSt.promptKey?.split(':')?.[1] ?? '');
+    }
 
     if (agentSt.phase === 'turn_incomplete') {
       const r = buildGuardRecovery(reg.token, target.id, agentSt.issue ?? 'turn incomplete');
@@ -264,6 +355,7 @@ async function tickTarget(target: AgentTarget, usageWindows: Awaited<ReturnType<
     const r = await cursor.send(text, {
       token: reg.token,
       windowTitle: session.windowTitle,
+      force: plan.action === 'send' && plan.step !== 'recovery',
     });
     recordGuardNudge(path.join(target.agentDir, 'SESSION.md'), {
       role: role as 'Driver' | 'Meta' | 'Planner' | 'Backlog' | 'Critic' | 'Orchestrator' | 'Cleaner',
@@ -353,7 +445,56 @@ async function tickTmuxTarget(target: AgentTarget) {
   }
 }
 
+async function probeDailyUsage(): Promise<CursorUsageSnapshot | null> {
+  try {
+    const snap = await probeSettingsUsage(liveCdp);
+    if (!snap) return null;
+    // Save/upsert today's snapshot to DB
+    try {
+      saveUsageSnapshot(snap);
+    } catch (e) {
+      log('usage snapshot save failed', { err: e instanceof Error ? e.message : String(e) });
+    }
+    log('usage probe', {
+      plan: snap.plan,
+      autoComposerPct: snap.autoComposerPct,
+      apiPct: snap.apiPct,
+      onDemandUsd: snap.onDemandUsd,
+      resetsIn: snap.resetsIn,
+    });
+    return snap;
+  } catch (e) {
+    log('usage probe failed', { err: e instanceof Error ? e.message : String(e) });
+    // Fallback: last stored snapshot from DB
+    try {
+      const rows = listUsageSnapshots(1);
+      if (rows.length) {
+        const r = rows[0];
+        return {
+          plan: r.plan ?? 'Unknown',
+          autoComposerPct: r.auto_composer_pct,
+          apiPct: r.api_pct,
+          onDemandUsd: r.on_demand_usd,
+          onDemandLimitUsd: r.on_demand_limit_usd,
+          resetsIn: r.resets_in,
+          rawText: r.raw_text ?? '',
+          fetchedAt: new Date(r.created_at).getTime(),
+        };
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+}
+
 async function tick() {
+  const st = loadState();
+  const pauseUntil = st._global?.pauseUntil ?? 0;
+  if (pauseUntil > Date.now()) {
+    const resumeAt = new Date(pauseUntil).toISOString();
+    log('globally paused', { resumeAt });
+    return;
+  }
+
   if (!(await health())) {
     log('server down');
     ensureServer();
@@ -363,7 +504,11 @@ async function tick() {
     }
   }
 
-  const usageWindows = await probeWindowUsage(liveCdp);
+  const [usageWindows, settingsUsage] = await Promise.all([
+    probeWindowUsage(liveCdp),
+    probeDailyUsage(),
+  ]);
+
   const wd = await watchdogStats();
   if (wd?.paused) {
     log('watchdog paused');
@@ -375,7 +520,7 @@ async function tick() {
     if (target.transport === 'tmux') {
       await tickTmuxTarget(target);
     } else {
-      await tickTarget(target, usageWindows);
+      await tickTarget(target, usageWindows, settingsUsage);
     }
   }
 }

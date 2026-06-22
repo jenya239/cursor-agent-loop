@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -u
+export NVM_DIR="${HOME}/.nvm"
+[ -s "${NVM_DIR}/nvm.sh" ] && source "${NVM_DIR}/nvm.sh" && nvm use 22.22.0 --silent 2>/dev/null || true
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 INTERVAL="${CR_LOOP_INTERVAL_SEC:-300}"
 PIDFILE="${HOME}/.cursor/cursor-agent-loop.pid"

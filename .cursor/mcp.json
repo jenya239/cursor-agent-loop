@@ -1,8 +1,11 @@
 {
   "mcpServers": {
-    "cr-cursor": {
-      "command": "/usr/share/cursor/resources/app/resources/helpers/node",
-      "args": ["${workspaceFolder}/dist/mcp/stdio-main.js"]
+    "agent-loop": {
+      "command": "node",
+      "args": ["${workspaceFolder}/dist/mcp/stdio-main.js"],
+      "env": {
+        "CDP_PORT": "9226"
+      }
     }
   }
 }
