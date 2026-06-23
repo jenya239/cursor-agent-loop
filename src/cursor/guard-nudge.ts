@@ -61,8 +61,12 @@ export function planGuardNudge(opts: {
     return { action: 'skip', reason: 'turn pending in chat' };
   }
 
-  const recovKey = promptKey({ role: 'Driver', step: 'recovery' });
-  const recovBlocked = countRecentSameKey(opts.messages, recovKey, 6) >= 1;
+  const recovKey = promptKey(recoveryStep(opts.targetId));
+  const recovKeyShort = promptKey({ role: 'Driver', step: 'recovery' });
+  // Use tail=8 to match the same window cursor.send uses (no source='guard')
+  const recovBlocked =
+    countRecentSameKey(opts.messages, recovKey, 8) >= 1 ||
+    countRecentSameKey(opts.messages, recovKeyShort, 8) >= 1;
 
   if (
     lastMsg?.role === 'assistant' &&
@@ -98,6 +102,29 @@ export function planGuardNudge(opts: {
     // Recovery blocked + aborted turn: force-resend same step
     if (recovBlocked && /already ran|already answered/i.test(loop.reason ?? '') && next.role === 'Driver') {
       return { action: 'send', text, role: next.role, step: next.step };
+    }
+    // Driver step sent too many times with all turns aborted → escalate to Planner
+    if (/already sent \d+x/i.test(loop.reason ?? '') && next.role === 'Driver') {
+      const planRefresh: NextAgentStep = {
+        role: 'Planner',
+        step: 'plan-refresh',
+        trackFile: undefined,
+        focus: 'stability',
+        reason: `Driver step stuck: ${loop.reason ?? 'blocked'}`,
+        refs: ['@docs/agent/CONTINUITY.md'],
+      };
+      const planText = buildNudgePrompt(planRefresh, opts.token, opts.targetId);
+      const planLoop = checkEnqueueLoop({
+        composerId: opts.composerId,
+        text: planText,
+        agentDir: opts.agentDir,
+        historyMessages: opts.messages,
+        pendingTexts: opts.pendingTexts,
+        source: 'guard',
+      });
+      if (planLoop.allow) {
+        return { action: 'send', text: planLoop.adjustedText ?? planText, role: 'Planner', step: 'plan-refresh' };
+      }
     }
     // Rotated non-Driver step is deduped — fall back to the pending Driver step.
     if (next.role !== 'Driver') {
