@@ -7,6 +7,8 @@ import { getAgentState, type AgentStateEntry } from '../cursor/agent-state';
 import { AGENT_TARGETS } from '../cursor/agent-targets';
 import { listMeetings } from '../meetings/sync';
 import { loadCachedSessionTurns } from '../session/sync';
+import { loadTurnAuditEvents } from '../session/sync-turnlog';
+import type { TurnAuditRow } from '../db/turn-audit';
 
 const LOG_PATH = process.env.CR_OVERNIGHT_LOG ?? path.join(os.homedir(), '.cursor/cr-overnight.log');
 
@@ -56,6 +58,17 @@ export interface MeetingSummary {
   endedAt: string | null;
 }
 
+export interface TurnAuditSummary {
+  ts: string;
+  event: string;
+  role: string;
+  step: string;
+  track: string;
+  why: string;
+  promptKey: string;
+  dbStatus: string;
+}
+
 export interface ProgressReport {
   loopRunning: boolean;
   lastTickAt: string | null;
@@ -65,6 +78,7 @@ export interface ProgressReport {
   errors: LogEntry[];
   tracks: TrackProgress[];
   sessionTurns: SessionTurn[];
+  turnAudit: TurnAuditSummary[];
   meetings: MeetingSummary[];
   recentCommits: GitCommit[];
   plannedItems: string[];
@@ -144,6 +158,19 @@ function parsePlannedItems(agentDir?: string): string[] {
   }
 }
 
+function turnAuditToSummary(row: TurnAuditRow): TurnAuditSummary {
+  return {
+    ts: row.ts,
+    event: row.event,
+    role: row.role ?? '',
+    step: row.step ?? '',
+    track: row.track ?? '',
+    why: row.why ?? '',
+    promptKey: row.prompt_key ?? '',
+    dbStatus: row.db_status ?? '',
+  };
+}
+
 export function buildProgressReport(): ProgressReport {
   const primary = AGENT_TARGETS.find((t) => t.id === 'mlc') ?? AGENT_TARGETS[0];
 
@@ -167,6 +194,7 @@ export function buildProgressReport(): ProgressReport {
   let agentState: AgentStateEntry | null = null;
   let tracks: TrackProgress[] = [];
   let sessionTurns: SessionTurn[] = [];
+  let turnAudit: TurnAuditSummary[] = [];
   let meetings: MeetingSummary[] = [];
   let recentCommits: GitCommit[] = [];
 
@@ -192,6 +220,11 @@ export function buildProgressReport(): ProgressReport {
       tracks = [];
     }
     sessionTurns = loadCachedSessionTurns(primary.agentDir);
+    try {
+      turnAudit = loadTurnAuditEvents(primary.agentDir, { limit: 20 }).map(turnAuditToSummary);
+    } catch {
+      turnAudit = [];
+    }
     meetings = listMeetings(path.join(primary.agentDir, 'meetings'));
     const repoDir = path.join(primary.agentDir, '../..');
     recentCommits = readRecentCommits(repoDir);
@@ -208,6 +241,7 @@ export function buildProgressReport(): ProgressReport {
     errors,
     tracks,
     sessionTurns,
+    turnAudit,
     meetings,
     recentCommits,
     plannedItems,

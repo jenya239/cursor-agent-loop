@@ -8,6 +8,8 @@ import { liveCdp } from '../src/cdp/live-cdp';
 import { CursorDbReader } from '../src/db/reader';
 import { globalDbPath } from '../src/db/paths';
 import { buildNudgePrompt, recordGuardNudge, pickNextAgentStep } from '../src/cursor/agent_next';
+import { appendTurnAudit } from '../src/session/turn-audit';
+import { syncTurnLogFromAgentDir } from '../src/session/sync-turnlog';
 import { parseAgentPrompt } from '../src/cursor/loop-guard';
 import { buildGuardRecovery, planGuardNudge, isExpectedSendBlock } from '../src/cursor/guard-nudge';
 import { syncAgentState } from '../src/cursor/agent-state';
@@ -33,6 +35,8 @@ type TargetState = {
   lastAbortedKey?: string;
   /** consecutive ticks with same promptKey + dbStatus=aborted */
   abortedTicks?: number;
+  /** last promptKey written to TURNLOG turn_done */
+  lastAuditDoneKey?: string;
 };
 type StateFile = Record<string, TargetState> & { _global?: { pauseUntil?: number } };
 
@@ -122,7 +126,7 @@ async function tickTarget(
   settingsUsage: CursorUsageSnapshot | null
 ) {
   const st = loadState();
-  const entry = st[target.id] ?? {};
+  let entry = st[target.id] ?? {};
 
   let session;
   try {
@@ -219,6 +223,12 @@ async function tickTarget(
     return;
   }
 
+  try {
+    syncTurnLogFromAgentDir(target.agentDir);
+  } catch {
+    /* non-fatal */
+  }
+
   // Always re-analyze fresh; stale cached report from a previous loop cycle
   // can block guard indefinitely on already-resolved issues.
   const SUPERVISOR_STALE_MS = Number(process.env.CR_SUPERVISOR_STALE_MS) || 2 * COOLDOWN_MS;
@@ -259,6 +269,25 @@ async function tickTarget(
       promptKey: agentSt.promptKey,
       issue: agentSt.issue,
     });
+
+    if (agentSt.phase === 'turn_done' && agentSt.promptKey && entry.lastAuditDoneKey !== agentSt.promptKey) {
+      const parts = agentSt.promptKey.split(':');
+      appendTurnAudit(target.agentDir, {
+        ts: new Date().toISOString(),
+        event: session.agent.dbStatus === 'aborted' ? 'turn_aborted' : 'turn_done',
+        role: parts[0],
+        step: parts[1],
+        track: parts[2] ? `TRACK_${parts[2]}` : undefined,
+        target: target.id,
+        prompt_key: agentSt.promptKey,
+        db_status: session.agent.dbStatus,
+        model: winUsage?.model,
+        usage_pct: usagePct,
+      });
+      entry = { ...entry, lastAuditDoneKey: agentSt.promptKey };
+      st[target.id] = entry;
+      saveState(st);
+    }
 
     if (reconnecting || agentSt.phase === 'stuck_reconnecting' || agentSt.phase === 'stuck_slow') {
       log('stuck skip', { target: target.id, phase: agentSt.phase });
@@ -328,6 +357,19 @@ async function tickTarget(
         refs: [],
       });
       log('incomplete recovery', { target: target.id, pageTitle: sendR.pageTitle });
+      appendTurnAudit(target.agentDir, {
+        ts: new Date().toISOString(),
+        event: 'recovery',
+        role: 'Meta',
+        step: r.step,
+        track: 'TRACK_PLAN.md',
+        target: target.id,
+        token: reg.token,
+        why: agentSt.issue ?? 'turn incomplete',
+        page_title: sendR.pageTitle,
+        model: winUsage?.model,
+        usage_pct: usagePct,
+      });
       return;
     }
 
@@ -344,6 +386,14 @@ async function tickTarget(
     });
 
     if (plan.action === 'skip') {
+      appendTurnAudit(target.agentDir, {
+        ts: new Date().toISOString(),
+        event: 'guard_skip',
+        target: target.id,
+        why: plan.reason,
+        model: winUsage?.model,
+        usage_pct: usagePct,
+      });
       log('guard skip', { target: target.id, reason: plan.reason });
       return;
     }
@@ -373,6 +423,19 @@ async function tickTarget(
       step,
       reason: plan.action === 'recovery' ? plan.reason : undefined,
       pageTitle: r.pageTitle,
+    });
+    appendTurnAudit(target.agentDir, {
+      ts: new Date().toISOString(),
+      event: plan.action === 'recovery' ? 'recovery' : 'sent',
+      role,
+      step,
+      track: parseAgentPrompt(text).trackFile,
+      target: target.id,
+      token: reg.token,
+      why: plan.action === 'recovery' ? plan.reason : 'guard nudge',
+      page_title: r.pageTitle,
+      model: winUsage?.model,
+      usage_pct: usagePct,
     });
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);

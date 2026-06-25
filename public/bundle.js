@@ -69,7 +69,7 @@
     return "pr-role-util";
   }
   function renderSessionTable(turns) {
-    if (!turns.length) return '<p class="pr-dim">\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445 SESSION.md</p>';
+    if (!turns.length) return '<p class="pr-dim">no SESSION.md data</p>';
     const rows = turns.map((t) => {
       const rc = roleCls(t.role);
       const gate = t.gate.replace(/build_tests\s*/i, "").replace(/;\s*build\.sh OK/i, "").trim();
@@ -83,12 +83,30 @@
     </tr>`;
     }).join("");
     return `<table class="pr-table">
-    <thead><tr><th>\u0412\u0440\u0435\u043C\u044F</th><th>\u0420\u043E\u043B\u044C</th><th>\u0428\u0430\u0433</th><th>\u0421\u0434\u0435\u043B\u0430\u043D\u043E</th><th>Gate</th></tr></thead>
+    <thead><tr><th>Time</th><th>Role</th><th>Step</th><th>Done</th><th>Gate</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  }
+  function renderTurnAuditTable(events) {
+    if (!events.length) return '<p class="pr-dim">no TURNLOG data</p>';
+    const rows = events.map((e) => {
+      const t = e.ts.replace("T", " ").replace(/\.\d+Z$/, "");
+      const rc = roleCls(e.role);
+      return `<tr>
+      <td class="pr-td-time">${esc2(t)}</td>
+      <td>${esc2(e.event)}</td>
+      <td><span class="pr-role ${rc}">${esc2(e.role || "?")}</span></td>
+      <td class="pr-td-step">${esc2(e.step)}</td>
+      <td class="pr-td-done">${esc2(e.why || e.promptKey)}</td>
+    </tr>`;
+    }).join("");
+    return `<table class="pr-table">
+    <thead><tr><th>Time</th><th>Event</th><th>Role</th><th>Step</th><th>Why / key</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
   }
   function renderMeetingsTable(meetings) {
-    if (!meetings.length) return '<p class="pr-dim">\u043D\u0435\u0442 meeting rooms</p>';
+    if (!meetings.length) return '<p class="pr-dim">no meeting rooms</p>';
     const rows = meetings.map((meeting) => {
       const status = meeting.endedAt ? esc2(meeting.endedAt) : '<span class="pr-ok">open</span>';
       return `<tr>
@@ -99,19 +117,19 @@
     </tr>`;
     }).join("");
     return `<table class="pr-table">
-    <thead><tr><th>\u0414\u0430\u0442\u0430</th><th>\u0422\u0435\u043C\u0430</th><th>Slug</th><th>\u0421\u0442\u0430\u0442\u0443\u0441</th></tr></thead>
+    <thead><tr><th>Date</th><th>Topic</th><th>Slug</th><th>Status</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
   }
   function renderCommits(commits) {
-    if (!commits.length) return '<p class="pr-dim">\u043D\u0435\u0442 \u043A\u043E\u043C\u043C\u0438\u0442\u043E\u0432</p>';
+    if (!commits.length) return '<p class="pr-dim">no commits</p>';
     const rows = commits.map((c) => `<tr>
     <td class="pr-td-time">${esc2(c.time.slice(5, 16))}</td>
     <td><code class="pr-hash">${esc2(c.hash)}</code></td>
     <td class="pr-td-done">${esc2(c.msg)}</td>
   </tr>`).join("");
     return `<table class="pr-table">
-    <thead><tr><th>\u0412\u0440\u0435\u043C\u044F</th><th>Hash</th><th>\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435</th></tr></thead>
+    <thead><tr><th>Time</th><th>Hash</th><th>Message</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
   }
@@ -190,13 +208,16 @@
   <h3 class="pr-section">Active track</h3>
   ${trackHtml}
 
-  <h3 class="pr-section">\u0425\u043E\u0434\u044B \u0430\u0433\u0435\u043D\u0442\u0430</h3>
+  <h3 class="pr-section">Agent turns</h3>
   ${renderSessionTable(report.sessionTurns)}
+
+  <h3 class="pr-section">Turn audit (TURNLOG)</h3>
+  ${renderTurnAuditTable(report.turnAudit)}
 
   <h3 class="pr-section">Meeting rooms</h3>
   ${renderMeetingsTable(report.meetings)}
 
-  <h3 class="pr-section">\u041A\u043E\u043C\u043C\u0438\u0442\u044B</h3>
+  <h3 class="pr-section">Commits</h3>
   ${renderCommits(report.recentCommits)}
 
   <h3 class="pr-section">Recent activity (log)</h3>
@@ -218,7 +239,7 @@
       return `<p class="billing-error">${esc(error)}</p>`;
     }
     if (!data?.entries.length) {
-      return '<p class="hint">\u041D\u0435\u0442 \u0437\u0430\u043F\u0438\u0441\u0435\u0439 cost_entries \u2014 \u043F\u043E\u044F\u0432\u044F\u0442\u0441\u044F \u043F\u043E\u0441\u043B\u0435 cursor_enqueue_send.</p>';
+      return '<p class="hint">No cost_entries records \u2014 they will appear after cursor_enqueue_send.</p>';
     }
     const rows = data.entries.map(
       (entry) => `<tr>
@@ -518,7 +539,7 @@
     if (!st) {
       return {
         phase: "unknown",
-        label: "\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445",
+        label: "no data",
         cdpLine: "",
         dbLine: "",
         windowLine: "",
@@ -529,13 +550,13 @@
         composerId: state.activeComposerId
       };
     }
-    const label = st.busy ? "\u0420\u0410\u0411\u041E\u0422\u0410\u0415\u0422" : "\u0416\u0414\u0401\u0422";
-    const cdpLine = st.cdpOk ? st.cdpBusy ? `Cursor \u0437\u0430\u043D\u044F\u0442 (${st.cdpReason || "?"})` : "Cursor \u0441\u0432\u043E\u0431\u043E\u0434\u0435\u043D" : "CDP \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D";
-    const dbLine = st.dbBusy ? `\u0447\u0430\u0442 \u0437\u0430\u043D\u044F\u0442 (${st.dbStatus || "?"})` : "\u0447\u0430\u0442 \u0441\u0432\u043E\u0431\u043E\u0434\u0435\u043D";
+    const label = st.busy ? "RUNNING" : "IDLE";
+    const cdpLine = st.cdpOk ? st.cdpBusy ? `Cursor busy (${st.cdpReason || "?"})` : "Cursor free" : "CDP unavailable";
+    const dbLine = st.dbBusy ? `chat busy (${st.dbStatus || "?"})` : "chat free";
     const windowLine = st.cdpWindowTitle ? ` \xB7 ${st.cdpWindowTitle}` : "";
     const n = state.snapshot?.windows?.length;
     const busyN = state.snapshot?.composerByWindow?.filter((w) => w.probe?.busy).length ?? 0;
-    const cdpMeta = state.snapshot?.cdp?.ok && n ? ` \xB7 CDP ${n} \u043E\u043A\u043D${busyN ? `, ${busyN} \u0437\u0430\u043D\u044F\u0442\u043E` : ""}` : "";
+    const cdpMeta = state.snapshot?.cdp?.ok && n ? ` \xB7 CDP ${n} win${busyN ? `, ${busyN} busy` : ""}` : "";
     const sw = state.snapshot?.switch;
     const switchLine = sw ? ` \xB7 switch: ${sw.ok ? "ok" : "fail"}(${sw.reason})${sw.switchTarget ? ` \u2192 ${sw.switchTarget}` : ""}` : "";
     const cdpDetails = formatCdpDetails(state);
@@ -698,17 +719,17 @@
   function renderChatHtml(data) {
     const ws = data.workspacePath ? `<span class="chat-ws">${esc(shortPath(data.workspacePath))}</span> ` : data.workspaceLabel ? `<span class="chat-ws">${esc(data.workspaceLabel)}</span> ` : "";
     const title = esc(data.name || data.summary?.name || "\u2014");
-    const busy = data.agentBusy || data.agent?.busy ? '<span class="agent-busy" title="\u0430\u0433\u0435\u043D\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442">AGENT</span> ' : "";
+    const busy = data.agentBusy || data.agent?.busy ? '<span class="agent-busy" title="agent running">AGENT</span> ' : "";
     const body = (data.messages || []).map(
       (m) => `<article class="msg ${m.role}${(m.text || "").startsWith("[") ? " tool" : ""}"><span class="tag">${tag(m)}</span><pre>${esc(m.text || "")}</pre></article>`
     ).join("");
-    return `<div class="chat-hdr">${ws}${title} ${busy}<span class="msg-count">${(data.messages || []).length}</span></div>${body || '<p class="hint">\u043F\u0443\u0441\u0442\u043E</p>'}<div id="chat-end" aria-hidden="true"></div>`;
+    return `<div class="chat-hdr">${ws}${title} ${busy}<span class="msg-count">${(data.messages || []).length}</span></div>${body || '<p class="hint">empty</p>'}<div id="chat-end" aria-hidden="true"></div>`;
   }
 
   // src/ui/views/render-list.ts
   init_dom();
   function renderListHtml(chats, activeId) {
-    if (!chats.length) return '<p class="hint">\u0427\u0430\u0442\u043E\u0432 \u043D\u0435\u0442</p>';
+    if (!chats.length) return '<p class="hint">No chats</p>';
     const groups = /* @__PURE__ */ new Map();
     for (const c of chats) {
       const g = c.workspaceLabel || "\u2014";
@@ -734,10 +755,10 @@
   // src/ui/views/render-agent-panel.ts
   init_dom();
   function renderAgentPanelHtml(m) {
-    const mismatch = m.mismatch ? ' \xB7 <span class="mismatch">\u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0447\u0430\u0442 \u2260 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439 composer</span>' : "";
-    const fallback = m.mismatch && m.composerId ? `<div class="switch-fallback">\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0447\u0430\u0442 \u0432 Cursor \u0432\u0440\u0443\u0447\u043D\u0443\u044E \xB7 <button type="button" class="copy-composer-id">\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C id</button></div>` : "";
+    const mismatch = m.mismatch ? ' \xB7 <span class="mismatch">selected chat \u2260 active composer</span>' : "";
+    const fallback = m.mismatch && m.composerId ? `<div class="switch-fallback">Open chat in Cursor manually \xB7 <button type="button" class="copy-composer-id">copy id</button></div>` : "";
     const details = m.cdpDetails ? `<div class="agent-cdp-details" title="${esc(m.cdpDetails)}">${esc(m.cdpDetails)}</div>` : "";
-    const main = `\u0430\u0433\u0435\u043D\u0442 \xB7 ${esc(m.label)} \xB7 ${esc(m.cdpLine)} \xB7 ${esc(m.dbLine)}${esc(m.windowLine)}${esc(m.cdpMeta)}${esc(m.switchLine)}${mismatch}`;
+    const main = `agent \xB7 ${esc(m.label)} \xB7 ${esc(m.cdpLine)} \xB7 ${esc(m.dbLine)}${esc(m.windowLine)}${esc(m.cdpMeta)}${esc(m.switchLine)}${mismatch}`;
     return main + fallback + details;
   }
   var _lastAgentHtml = "";
@@ -985,7 +1006,7 @@
     const ct = wdRes.headers.get("content-type") || "";
     if (!wdRes.ok) {
       if (wdRes.status === 404) {
-        return renderWatchdogHtml(null, "\u043D\u0435\u0442 /api/watchdog/stats \u2014 \u043F\u0435\u0440\u0435\u0437\u0430\u043F\u0443\u0441\u0442\u0438 npm run dev", agent);
+        return renderWatchdogHtml(null, "no /api/watchdog/stats \u2014 restart npm run dev", agent);
       }
       if (ct.includes("json")) {
         const body = await wdRes.json();
@@ -1179,7 +1200,7 @@
     function render(s) {
       const panel = agentPanelModel(s);
       applyAgentPanel(agentPanelEl, panel);
-      agentIndicatorEl.textContent = `AGENT \xB7 ${s.agentBusy ? "\u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442" : "\u0436\u0434\u0451\u0442"}`;
+      agentIndicatorEl.textContent = `AGENT \xB7 ${s.agentBusy ? "running" : "idle"}`;
       agentIndicatorEl.className = `agent-indicator ${s.agentBusy ? "busy" : "idle"}`;
       agentIndicatorEl.title = agentPanelEl.textContent;
       statusEl.textContent = s.status;
@@ -1199,7 +1220,7 @@
       if (cdpWindowEl && s.snapshot) {
         const cur = s.cdpWindowTitle;
         const opts = cdpWindowOptions(s);
-        const newCdpHtml = '<option value="">\u043E\u043A\u043D\u043E CDP (\u0430\u0432\u0442\u043E)</option>' + opts.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
+        const newCdpHtml = '<option value="">CDP window (auto)</option>' + opts.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
         if (newCdpHtml !== lastCdpWindowHtml) {
           lastCdpWindowHtml = newCdpHtml;
           cdpWindowEl.innerHTML = newCdpHtml;
@@ -1238,7 +1259,7 @@
     function fillWorkspaceFilter(chats) {
       const cur = wsFilterEl.value;
       const items = workspaceOptions(chats);
-      wsFilterEl.innerHTML = '<option value="">\u0432\u0441\u0435</option>' + items.map(
+      wsFilterEl.innerHTML = '<option value="">all</option>' + items.map(
         (w) => `<option value="${esc(w.key)}">${esc(w.label)}${w.path ? " \xB7 " + esc(shortPath(w.path)) : ""}</option>`
       ).join("");
       if (cur && [...wsFilterEl.options].some((o) => o.value === cur)) wsFilterEl.value = cur;
@@ -1247,7 +1268,7 @@
       scheduler.halt();
       store.dispatch({ type: "SELECT_CHAT", composerId: id });
       saveLastChat(id);
-      chatEl.innerHTML = '<p class="loading">\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430\u2026</p>';
+      chatEl.innerHTML = '<p class="loading">Loading\u2026</p>';
       setComposeEnabled(true);
       try {
         const chat = await scheduler.refreshChat(id, true, true);
@@ -1273,7 +1294,7 @@
       if (s.agentBusy) return;
       if (isComposerMismatch(s)) {
         const ok = window.confirm(
-          "\u0412\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0447\u0430\u0442 \u043C\u043E\u0436\u0435\u0442 \u043D\u0435 \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0442\u044C \u0441 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u043C composer \u0432 Cursor. \u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0432\u0441\u0451 \u0440\u0430\u0432\u043D\u043E?"
+          "The selected chat may not match the active composer in Cursor. Send anyway?"
         );
         if (!ok) return;
       }
@@ -1285,11 +1306,11 @@
       composeInput.blur();
       scheduler.halt();
       const prevStatus = store.get().status;
-      store.dispatch({ type: "STATUS", text: "\u041E\u0442\u043F\u0440\u0430\u0432\u043A\u0430\u2026", loading: true });
+      store.dispatch({ type: "STATUS", text: "Sending\u2026", loading: true });
       try {
         const r = await api.send(draft, s.activeComposerId, s.cdpWindowTitle || void 0);
         const where = r.pageTitle ? ` \u2192 ${r.pageTitle}` : "";
-        store.dispatch({ type: "STATUS", text: `\u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043E${where}`, loading: false });
+        store.dispatch({ type: "STATUS", text: `sent${where}`, loading: false });
         await scheduler.refreshChat(s.activeComposerId, true);
         const chat = store.get();
         if (chat.messages.length) {
@@ -1308,7 +1329,7 @@
         composeInput.value = draft;
         store.dispatch({
           type: "STATUS",
-          text: "\u041E\u0448\u0438\u0431\u043A\u0430: " + (e instanceof Error ? e.message : String(e)),
+          text: "Error: " + (e instanceof Error ? e.message : String(e)),
           loading: false
         });
         lastSendText = "";
@@ -1320,15 +1341,15 @@
     }
     function onListError(e) {
       listEl.innerHTML = `<p class="err">${esc(e instanceof Error ? e.message : String(e))}</p>`;
-      store.dispatch({ type: "STATUS", text: "\u041E\u0448\u0438\u0431\u043A\u0430", loading: false });
+      store.dispatch({ type: "STATUS", text: "Error", loading: false });
       refreshBtn.disabled = false;
     }
     if (embedded) {
       if (embedWarn) embedWarn.hidden = false;
       composeInput.disabled = true;
       composeSend.disabled = true;
-      composeInput.placeholder = "\u0422\u043E\u043B\u044C\u043A\u043E \u0438\u0437 \u0432\u043D\u0435\u0448\u043D\u0435\u0433\u043E \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430";
-      store.dispatch({ type: "STATUS", text: "\u043E\u0442\u043A\u0440\u043E\u0439 127.0.0.1:3847 \u0432 Firefox/Chrome", loading: false });
+      composeInput.placeholder = "External browser only";
+      store.dispatch({ type: "STATUS", text: "open 127.0.0.1:3847 in Firefox/Chrome", loading: false });
     } else {
       composeSend.addEventListener("click", () => void submitCompose());
       composeInput.addEventListener("keydown", (e) => {
@@ -1350,7 +1371,7 @@
     }
     refreshBtn.addEventListener("click", () => {
       refreshBtn.disabled = true;
-      store.dispatch({ type: "STATUS", text: "\u041E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435\u2026", loading: true });
+      store.dispatch({ type: "STATUS", text: "Refreshing\u2026", loading: true });
       void (async () => {
         try {
           await api.refreshDb();
@@ -1360,7 +1381,7 @@
         } catch (e) {
           store.dispatch({
             type: "STATUS",
-            text: "\u041E\u0448\u0438\u0431\u043A\u0430: " + (e instanceof Error ? e.message : String(e)),
+            text: "Error: " + (e instanceof Error ? e.message : String(e)),
             loading: false
           });
         } finally {

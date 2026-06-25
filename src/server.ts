@@ -21,6 +21,7 @@ import { buildProgressReport } from './progress/report';
 import { AGENT_TARGETS } from './cursor/agent-targets';
 import { startMeetingsWatcher } from './meetings/sync';
 import { startSessionTurnsWatcher } from './session/sync';
+import { startTurnLogWatcher } from './session/sync-turnlog';
 import { captureSnapshot } from './cursor/interaction/snapshot';
 import { runStep, waitFor, stepRequestToOpts, waitRequestToOpts } from './cursor/interaction';
 import type { StepRequest, WaitRequest } from './cursor/interaction/registry';
@@ -453,6 +454,9 @@ function main(): void {
     const sessionWatcher = primaryAgent
       ? startSessionTurnsWatcher(primaryAgent.agentDir)
       : undefined;
+    const turnLogWatcher = primaryAgent
+      ? startTurnLogWatcher(primaryAgent.agentDir)
+      : undefined;
     const meetingsWatcher = primaryAgent
       ? startMeetingsWatcher(path.join(primaryAgent.agentDir, 'meetings'))
       : undefined;
@@ -464,6 +468,7 @@ function main(): void {
 
     const shutdown = () => {
       sessionWatcher?.stop();
+      turnLogWatcher?.stop();
       meetingsWatcher?.stop();
       watchdogSvc?.close();
       server.close();

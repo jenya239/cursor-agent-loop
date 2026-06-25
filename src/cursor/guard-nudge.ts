@@ -108,7 +108,7 @@ export function planGuardNudge(opts: {
       const planRefresh: NextAgentStep = {
         role: 'Planner',
         step: 'plan-refresh',
-        trackFile: undefined,
+        trackFile: 'TRACK_PLAN.md',
         focus: 'stability',
         reason: `Driver step stuck: ${loop.reason ?? 'blocked'}`,
         refs: ['@docs/agent/CONTINUITY.md'],

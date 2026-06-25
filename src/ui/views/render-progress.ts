@@ -1,4 +1,4 @@
-import type { ProgressReport, SessionTurn, GitCommit, MeetingSummary } from '../../progress/report';
+import type { ProgressReport, SessionTurn, GitCommit, MeetingSummary, TurnAuditSummary } from '../../progress/report';
 
 function ago(ms: number | null): string {
   if (ms == null) return '?';
@@ -60,6 +60,25 @@ function renderSessionTable(turns: SessionTurn[]): string {
   }).join('');
   return `<table class="pr-table">
     <thead><tr><th>Time</th><th>Role</th><th>Step</th><th>Done</th><th>Gate</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function renderTurnAuditTable(events: TurnAuditSummary[]): string {
+  if (!events.length) return '<p class="pr-dim">no TURNLOG data</p>';
+  const rows = events.map((e) => {
+    const t = e.ts.replace('T', ' ').replace(/\.\d+Z$/, '');
+    const rc = roleCls(e.role);
+    return `<tr>
+      <td class="pr-td-time">${esc(t)}</td>
+      <td>${esc(e.event)}</td>
+      <td><span class="pr-role ${rc}">${esc(e.role || '?')}</span></td>
+      <td class="pr-td-step">${esc(e.step)}</td>
+      <td class="pr-td-done">${esc(e.why || e.promptKey)}</td>
+    </tr>`;
+  }).join('');
+  return `<table class="pr-table">
+    <thead><tr><th>Time</th><th>Event</th><th>Role</th><th>Step</th><th>Why / key</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -195,6 +214,9 @@ export function renderProgressHtml(report: ProgressReport): string {
 
   <h3 class="pr-section">Agent turns</h3>
   ${renderSessionTable(report.sessionTurns)}
+
+  <h3 class="pr-section">Turn audit (TURNLOG)</h3>
+  ${renderTurnAuditTable(report.turnAudit)}
 
   <h3 class="pr-section">Meeting rooms</h3>
   ${renderMeetingsTable(report.meetings)}
