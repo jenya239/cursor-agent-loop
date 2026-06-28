@@ -56,8 +56,8 @@ describe('guard-nudge', () => {
     });
     expect(p.action).toBe('recovery');
     if (p.action === 'recovery') {
-      expect(p.role).toBe('Meta');
-      expect(p.text).toContain('Meta');
+      expect(p.role).toBe('Driver');
+      expect(p.step).toBe('recovery');
     }
   });
 
@@ -76,7 +76,7 @@ describe('guard-nudge', () => {
       targetId: 'mlc',
     });
     expect(p.action).toBe('recovery');
-    if (p.action === 'recovery') expect(p.role).toBe('Meta');
+    if (p.action === 'recovery') expect(p.role).toBe('Driver');
   });
 
   it('isExpectedSendBlock', () => {

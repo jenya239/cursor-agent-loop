@@ -23,7 +23,7 @@ import { completeSelfQueueItem } from '../src/cursor/self-queue';
 const CR_BASE = process.env.CR_BASE || 'http://127.0.0.1:3847';
 const LOG = process.env.CR_LOG || path.join(os.homedir(), '.cursor', 'cursor-agent-loop.log');
 const STATE = path.join(path.dirname(LOG), 'cursor-agent-loop-state.json');
-const COOLDOWN_MS = process.env.CR_COOLDOWN_MS != null ? Number(process.env.CR_COOLDOWN_MS) : 15 * 60_000;
+const COOLDOWN_MS = process.env.CR_COOLDOWN_MS != null ? Number(process.env.CR_COOLDOWN_MS) : 4 * 60_000;
 const USAGE_PAUSE_PCT = Number(process.env.CR_USAGE_PAUSE_PCT) || 100;
 const REPO = path.join(__dirname, '..');
 

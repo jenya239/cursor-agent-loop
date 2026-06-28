@@ -15,10 +15,10 @@ describe('agent-targets', () => {
     process.env = { ...env };
   });
 
-  it('resolveTargets defaults to cr only', () => {
+  it('resolveTargets defaults to mlc only', () => {
     delete process.env.CR_GUARD_TARGET;
     delete process.env.CR_AGENT_COMPOSER_ID;
-    expect(resolveTargets().map((t) => t.id)).toEqual(['cr']);
+    expect(resolveTargets().map((t) => t.id)).toEqual(['mlc']);
   });
 
   it('resolveTargets all when explicit', () => {
@@ -56,6 +56,6 @@ describe('agent-targets', () => {
     expect(mlc.transport).toBe('tmux');
     expect(mlc.paneId).toBe('%42');
     expect(module.tmuxAgentTargets().map((target: { id: string }) => target.id)).toEqual(['mlc']);
-    expect(module.cdpAgentTargets().map((target: { id: string }) => target.id)).toEqual(['cr']);
+    expect(module.cdpAgentTargets().map((target: { id: string }) => target.id)).toEqual(['mlc', 'loop']);
   });
 });

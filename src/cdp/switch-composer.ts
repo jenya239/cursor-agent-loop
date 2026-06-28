@@ -1,11 +1,10 @@
 import type { CdpPort } from './port';
 import { probeActiveComposer } from './active-composer';
-import { composerPageOrder, type CdpTarget } from './client';
 import { composerIdsMatch, filterTargetsByHints } from './window-match';
+import { composerPageOrder, type CdpTarget } from './client';
 import { runProbeOnTargets } from './probes/registry';
 import { COMPOSER_SWITCH_PROBE_ID } from './port';
 import type { ComposerSwitchValue } from './probes/composer-switch.v1';
-import { switchViaQuickOpen } from './switch-quick-open';
 
 export interface SwitchComposerOpts {
   windowTitle?: string;
@@ -37,6 +36,17 @@ export async function switchComposerVerified(
     if (!t) return { ok: false, reason: 'window-not-found' };
   }
   const pages = composerPageOrder(targets);
+  const scope =
+    opts?.windowTitle != null
+      ? pages.filter((p) => (p.title || '').includes(opts.windowTitle!))
+      : pages;
+  for (const page of scope.length ? scope : pages.slice(0, 2)) {
+    const active = await probeActiveComposer(cdp, { windowTitle: page.title });
+    if (active && composerIdsMatch(active.composerId, composerId)) {
+      return { ok: true, reason: 'already-active', switchTarget: page.title || page.id };
+    }
+  }
+
   const rows = (await runProbeOnTargets(COMPOSER_SWITCH_PROBE_ID, targets, {
     composerId,
     chatName: opts?.chatName,
@@ -51,16 +61,5 @@ export async function switchComposerVerified(
     }
   }
 
-  const query = opts?.chatName || composerId.slice(0, 8);
-  if (query.length >= 3) {
-    const qo = await switchViaQuickOpen(targets, query, opts?.windowTitle);
-    if (qo.ok && qo.switchTarget) {
-      const active = await probeActiveComposer(cdp, { windowTitle: qo.switchTarget });
-      if (!active || !composerIdsMatch(active.composerId, composerId)) {
-        return { ok: false, reason: 'switch-mismatch', switchTarget: qo.switchTarget };
-      }
-    }
-    return qo;
-  }
   return { ok: false, reason: rows[0]?.reason || 'no-element' };
 }

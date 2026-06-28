@@ -3,6 +3,7 @@ import type { WatchdogStats } from './stats';
 import { StuckTracker } from './stuck-tracker';
 import { stuckWindowsDue, watchdogBusyMs, watchdogReconnectMs, watchdogSlowMs, watchdogSlowRecoverEnabled } from './slow-recover';
 import { noteAgentRecover, targetForWindowTitle } from '../cursor/agent-state';
+import { ensureLoopRunning } from '../loop/ensure-loop';
 
 export interface DaemonControl {
   tick(): Promise<void>;
@@ -46,6 +47,7 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
   let consecutiveIdle = 0;
   let currentPollMs = pollMs;
   let timer: ReturnType<typeof setInterval> | null = null;
+  let loopCheckTick = 0;
 
   function restartInterval(ms: number): void {
     if (timer) clearIv(timer);
@@ -73,6 +75,9 @@ export function startDaemon(opts: DaemonOpts): DaemonControl {
     stats.decayErrors();
     stats.recordPoll();
     try {
+      loopCheckTick++;
+      if (loopCheckTick % 15 === 0) ensureLoopRunning();
+
       // Single batched CDP call: one listTargets() → observe + conditional dismiss
       const { windows, dismissed } = await actions.batchTick();
 

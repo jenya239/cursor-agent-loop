@@ -1,4 +1,4 @@
-import { pickRoleByRotation } from '../../src/cursor/agent_next';
+import { pickRoleByRotation } from '../../src/orchestration/pick/role-rotation';
 
 describe('pickRoleByRotation', () => {
   it('Orchestrator at 16 beats Critic at 6 boundary', () => {

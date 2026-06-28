@@ -30,7 +30,7 @@ Open in an external browser (not Cursor's built-in tab). Requires Cursor running
 | `CURSOR_DB` | auto | Path to `state.vscdb` |
 | `CDP_PORT` | `9226` | Cursor remote debugging port |
 | `CR_GUARD_TARGET` | `mlc` | Which agent target to nudge (`mlc`, `cr`, `all`) |
-| `CR_COOLDOWN_MS` | `900000` | Min interval between nudges (15m) |
+| `CR_COOLDOWN_MS` | `240000` | Min interval between nudges (4m) |
 | `CR_WATCHDOG` | `1` | Set to `0` to disable watchdog |
 | `CR_LOG` | `~/.cursor/cursor-agent-loop.log` | Log file path |
 

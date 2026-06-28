@@ -4,20 +4,34 @@ import os from 'os';
 import path from 'path';
 import { AGENT_TARGETS } from './agent-targets';
 import {
-  INSTRUCTIONS_REV,
   advanceIfStepDone,
+  INSTRUCTIONS_REV,
   listTracks,
   trackStepStatus,
-  type AgentRole,
   type NextAgentStep,
 } from './agent_next';
+import {
+  checkHistoryAndPending,
+  checkOrchDedup,
+  isExpectedLoopBlock,
+} from '../orchestration/guard/enqueue-policy';
+import {
+  parseAgentPrompt,
+  promptKey,
+  lastUserPromptKey,
+  countRecentSameKey,
+} from '../orchestration/guard/prompt-meta';
 
-export interface PromptMeta {
-  role?: AgentRole;
-  step?: string;
-  instructionsRev?: string;
-  trackFile?: string;
-}
+export type { ChatLine } from '../orchestration/types';
+export type { PromptMeta } from '../orchestration/guard/prompt-meta';
+export {
+  parseAgentPrompt,
+  promptKey,
+  lastUserPromptKey,
+  countRecentSameKey,
+  isExpectedLoopBlock,
+};
+export { isExpectedSendBlock } from '../orchestration/guard/enqueue-policy';
 
 export interface LoopDecision {
   allow: boolean;
@@ -46,19 +60,6 @@ const LOOP_REPEAT = Number(process.env.CR_ENQUEUE_LOOP_MAX) || 2;
 
 export function agentDirForComposer(composerId: string): string | null {
   return AGENT_TARGETS.find((t) => t.composerId === composerId)?.agentDir ?? null;
-}
-
-export function parseAgentPrompt(text: string): PromptMeta {
-  const role = text.match(/^ROLE=(\w+)/m)?.[1] as AgentRole | undefined;
-  const step = text.match(/^STEP=(\S+)/m)?.[1];
-  const instructionsRev = text.match(/^INSTRUCTIONS_REV=(\S+)/m)?.[1];
-  const trackFile = text.match(/@docs\/agent\/(TRACK_\w+\.md)/m)?.[1];
-  return { role, step, instructionsRev, trackFile };
-}
-
-export function promptKey(meta: PromptMeta): string {
-  const track = meta.trackFile ? `:${meta.trackFile.replace('TRACK_', '').replace('.md', '')}` : '';
-  return `${meta.role ?? '?'}:${meta.step ?? '?'}${track}`;
 }
 
 export function hashPrompt(text: string): string {
@@ -98,8 +99,6 @@ function saveOrchState(st: OrchStateFile): void {
 
 type ChatLine = { role: string; text: string };
 
-export type { ChatLine };
-
 export function syncOrchFromChat(composerId: string, messages?: ChatLine[]): void {
   if (!messages?.length) return;
   const last = messages[messages.length - 1];
@@ -112,67 +111,6 @@ export function syncOrchFromChat(composerId: string, messages?: ChatLine[]): voi
     state.byComposer[composerId] = { ...entry, repeatKey: 0 };
     saveOrchState(state);
   }
-}
-
-export function isExpectedLoopBlock(reason?: string): boolean {
-  if (!reason) return false;
-  return /waiting in chat|already queued|duplicate enqueue|already sent|already answered|already ran|turn pending/i.test(
-    reason
-  );
-}
-
-export function lastUserPromptKey(messages: ChatLine[]): string | null {
-  const users = messages.filter((m) => m.role === 'user');
-  for (let i = users.length - 1; i >= 0; i--) {
-    const meta = parseAgentPrompt(users[i].text);
-    if (meta.role && meta.step) return promptKey(meta);
-  }
-  return null;
-}
-
-export function countRecentSameKey(messages: ChatLine[], key: string, tail = 8): number {
-  return messages
-    .filter((m) => m.role === 'user')
-    .slice(-tail)
-    .filter((m) => promptKey(parseAgentPrompt(m.text)) === key).length;
-}
-
-function checkHistoryAndPending(
-  key: string,
-  messages?: ChatLine[],
-  pendingTexts?: string[],
-  source?: 'agent' | 'guard' | 'mcp'
-): LoopDecision | null {
-  if (messages?.length) {
-    const lastMsg = messages[messages.length - 1];
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-    if (lastUser) {
-      const lastUserKey = promptKey(parseAgentPrompt(lastUser.text));
-      if (lastUserKey === key && lastMsg.role === 'user') {
-        return { allow: false, reason: `same step waiting in chat (${key})` };
-      }
-      if (lastUserKey === key && lastMsg.role === 'assistant') {
-        return {
-          allow: false,
-          reason: `step ${key} already ran; enqueue next STEP`,
-        };
-      }
-    }
-    const tail = source === 'guard' ? 6 : 8;
-    const n = countRecentSameKey(messages, key, tail);
-    const maxSame = source === 'guard' ? 2 : 2;
-    if (n >= maxSame) {
-      return { allow: false, reason: `step ${key} already sent ${n}x in chat` };
-    }
-  }
-  if (pendingTexts?.length) {
-    for (const t of pendingTexts) {
-      if (promptKey(parseAgentPrompt(t)) === key) {
-        return { allow: false, reason: `step ${key} already queued` };
-      }
-    }
-  }
-  return null;
 }
 
 export function checkEnqueueLoop(opts: {
@@ -221,24 +159,12 @@ export function checkEnqueueLoop(opts: {
 
   const state = loadOrchState();
   const entry = state.byComposer[opts.composerId] ?? {};
-  const now = Date.now();
-
-  if (
-    entry.lastKey === key &&
-    entry.lastAt != null &&
-    now - entry.lastAt < DEDUP_MS
-  ) {
-    return { allow: false, reason: `duplicate enqueue (${key})` };
-  }
-
-  if (
-    entry.lastKey === key &&
-    (entry.repeatKey ?? 0) >= LOOP_REPEAT &&
-    entry.lastAt != null &&
-    now - entry.lastAt < LOOP_MS
-  ) {
-    return { allow: false, reason: `step loop (${key})` };
-  }
+  const dedup = checkOrchDedup(key, entry, Date.now(), {
+    dedupMs: DEDUP_MS,
+    loopMs: LOOP_MS,
+    loopRepeat: LOOP_REPEAT,
+  });
+  if (dedup) return dedup;
 
   return { allow: true, adjustedText };
 }

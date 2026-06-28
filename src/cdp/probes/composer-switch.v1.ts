@@ -34,21 +34,6 @@ export function buildComposerSwitchJs(composerId: string, chatName?: string): st
       const v = tab.getAttribute('data-composer-id') || tab.getAttribute('data-id') || '';
       if (v === id || v.startsWith(short)) return { ok: true, reason: 'active-tab' };
     }
-    if (chatName) {
-      const hist = document.querySelectorAll(
-        '.composer-history-item, [class*="ComposerHistory"] *, [class*="composer"] [role="option"], [class*="history"] a, [class*="history"] [role="listitem"], [class*="chat-history"] *, li[role="treeitem"]'
-      );
-      for (const el of hist) {
-        const t = (el.getAttribute('aria-label') || el.textContent || '').trim();
-        if (t && t.includes(chatName) && click(el)) return { ok: true, reason: 'history-name' };
-      }
-    }
-    const rows = document.querySelectorAll('[aria-label*="Chat" i]');
-    for (const el of rows) {
-      if (chatName && (el.getAttribute('aria-label') || '').includes(chatName) && click(el)) {
-        return { ok: true, reason: 'aria-chat' };
-      }
-    }
     return { ok: false, reason: 'no-element' };
   })()`;
 }

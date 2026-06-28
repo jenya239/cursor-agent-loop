@@ -33,7 +33,7 @@ import type {
 } from './types';
 import { cachedLayoutSnapshot } from './layout/cache';
 
-const SWITCH_CACHE_MS = 4000;
+const SWITCH_CACHE_MS = 5 * 60_000;
 
 export class CursorModel {
   private readonly agent: AgentModel;

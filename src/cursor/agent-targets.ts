@@ -38,7 +38,7 @@ export const AGENT_TARGETS: AgentTarget[] = [
   {
     id: 'mlc',
     transport: transportForTarget('mlc'),
-    composerId: process.env.CR_MLC_COMPOSER_ID || 'f8e0a645-1610-4a1e-b19f-63f502235a2e',
+    composerId: process.env.CR_MLC_COMPOSER_ID || '617cbe8e-cee2-4fc1-80bd-2059b427e4f4',
     paneId: paneIdForTarget('mlc'),
     agentDir: process.env.MLC_AGENT_DIR || path.join(REPO, '../mlc/docs/agent'),
     windowHint: 'mlc',
@@ -94,7 +94,8 @@ export function resolveTargets(spec?: string): AgentTarget[] {
   const s = (spec ?? process.env.CR_GUARD_TARGET ?? '').trim().toLowerCase();
   if (s === 'all') return AGENT_TARGETS;
   if (s) {
-    const one = AGENT_TARGETS.find((t) => t.id === s);
+    const id = s === 'cr' ? 'loop' : s;
+    const one = AGENT_TARGETS.find((t) => t.id === id);
     if (!one) throw new Error(`unknown CR_GUARD_TARGET: ${s}`);
     return [one];
   }

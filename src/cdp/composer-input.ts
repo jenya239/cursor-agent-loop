@@ -59,6 +59,16 @@ export const FOCUS_CLEAR_INPUT_JS = `(() => {
   if (!el) return { ok: false, reason: bar ? 'no-input' : 'no-bar' };
   const scope = bar || el.closest('.composer-bar') || el.closest('.ui-prompt-input') || el;
   const draft = (el.innerText || '').replace(/\\s+/g, ' ').trim();
+  const active = document.activeElement;
+  if (active && !scope.contains(active)) {
+    const tag = (active.tagName || '').toUpperCase();
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || active.isContentEditable) {
+      return { ok: false, reason: 'user-typing', where: 'outside-composer' };
+    }
+  }
+  if (draft.length > 0 && !draft.startsWith('AGENT_TOKEN=')) {
+    return { ok: false, reason: 'user-typing', draftLen: draft.length };
+  }
   if (draft.length > 40 || draft.includes('AGENT_TOKEN=')) {
     return { ok: false, reason: 'composer-not-empty', draftLen: draft.length, draftPreview: draft.slice(0, 40) };
   }
@@ -69,8 +79,8 @@ export const FOCUS_CLEAR_INPUT_JS = `(() => {
   if (!inViewport) {
     return { ok: false, reason: 'bar-not-in-viewport', rect: { top: r.top, bottom: r.bottom, vh } };
   }
-  el.focus();
-  const active = document.activeElement;
+  const activeAfter = document.activeElement;
+  const inBar = activeAfter ? scope.contains(activeAfter) : false;
   return {
     ok: true,
     cleared: true,
@@ -78,7 +88,7 @@ export const FOCUS_CLEAR_INPUT_JS = `(() => {
     draftLen: 0,
     x: r.left + r.width / 2,
     y: r.top + r.height / 2,
-    inBar: active ? scope.contains(active) : false,
+    inBar,
   };
 })()`;
 

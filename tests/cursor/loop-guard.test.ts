@@ -86,6 +86,13 @@ describe('loop-guard', () => {
     expect(trackStepStatus(p, '2')).toBe('pending');
   });
 
+  it('trackStepStatus treats gate-pending partial as pending', () => {
+    const p = path.join(os.tmpdir(), `track-partial-${Date.now()}.md`);
+    fs.writeFileSync(p, '| 6 | gate | done (partial — bootstrap gate pending) |\n');
+    expect(trackStepStatus(p, '6')).toBe('pending');
+    fs.unlinkSync(p);
+  });
+
   it('pickNext skips done driver step', () => {
     const dir = path.join(os.tmpdir(), `agent-fix-${Date.now()}`);
     fs.mkdirSync(dir);

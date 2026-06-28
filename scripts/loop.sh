@@ -17,6 +17,14 @@ if ! flock -n 9; then
   exit 0
 fi
 
+OLD_PID=""
+[ -f "$PIDFILE" ] && OLD_PID="$(cat "$PIDFILE" 2>/dev/null || true)"
+if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+  echo "{\"at\":\"$(date -Iseconds)\",\"msg\":\"loop already running\",\"pid\":$OLD_PID}" >>"$LOG"
+  exit 0
+fi
+rm -f "$PIDFILE"
+
 echo "$$" >"$PIDFILE"
 echo "{\"at\":\"$(date -Iseconds)\",\"msg\":\"loop start\",\"pid\":$$,\"intervalSec\":$INTERVAL}" >>"$LOG"
 trap 'echo "{\"at\":\"$(date -Iseconds)\",\"msg\":\"loop exit\",\"pid\":$$,\"sig\":\"EXIT\"}" >>"$LOG"' EXIT

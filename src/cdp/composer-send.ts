@@ -120,7 +120,7 @@ async function liveComposerSend(
 
     let info = await tryFocusClear();
     if (!info?.ok && info?.reason === 'composer-not-empty') {
-      const GET_POS = `(() => { const el = document.querySelector('.composer-bar [contenteditable="true"]') || document.querySelector(".ui-prompt-input [contenteditable='true']"); if(!el) return null; el.focus(); el.click(); const r = el.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()`;
+      const GET_POS = `(() => { const el = document.querySelector('.composer-bar [contenteditable="true"]') || document.querySelector(".ui-prompt-input [contenteditable='true']"); if(!el) return null; const r = el.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()`;
       const pos = (
         (await send('Runtime.evaluate', { expression: GET_POS, returnByValue: true })) as {
           result?: { value?: { x: number; y: number } };
@@ -170,30 +170,32 @@ async function liveComposerSend(
     }
     if (!info?.ok) {
       const why = info?.reason || 'input not found';
+      if (why === 'user-typing') {
+        throw new Error('user typing in composer — skipped');
+      }
       throw new Error(
         why === 'composer-not-empty'
           ? `composer not empty (draft ${info?.draftLen ?? '?'} chars) — clear field manually; revert modal if open`
           : `composer ${why}`
       );
     }
-    if (info.inBar === false) {
-      throw new Error('focus not in composer-bar');
-    }
 
-    await send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: info.x,
-      y: info.y,
-      button: 'left',
-      clickCount: 1,
-    });
-    await send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: info.x,
-      y: info.y,
-      button: 'left',
-      clickCount: 1,
-    });
+    if (info.inBar !== true) {
+      await send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: info.x,
+        y: info.y,
+        button: 'left',
+        clickCount: 1,
+      });
+      await send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: info.x,
+        y: info.y,
+        button: 'left',
+        clickCount: 1,
+      });
+    }
 
     await send('Input.insertText', { text: trimmed });
 
